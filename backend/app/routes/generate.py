@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.auth import require_api_key
 from app.config import get_settings
 from app.prompts.style_headers import MODE_META, STYLE_HEADERS
-from app.schemas import GenerateIn, GenerateItem, GenerateOut, GenerationResult, ShotMode
+from app.schemas import GenerateIn, GenerateItem, GenerateOut, GenerationResult
 from app.services import aoai_image, blob, cosmos
 
 router = APIRouter(prefix="/sessions", tags=["generate"], dependencies=[Depends(require_api_key)])

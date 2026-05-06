@@ -15,7 +15,25 @@ env:
   IMAGE_NAME: create-ad-cut-backend
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          HAS_CREDS: ${{ secrets.AZURE_CREDENTIALS != '' }}
+        run: |
+          if [ "$HAS_CREDS" = "true" ] && [ -n "$AZURE_RG" ] && [ -n "$ACR_NAME" ] && [ -n "$ACA_NAME" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::Skipping deploy-backend — Azure secrets/variables are not configured. See docs/deployment.md §3."
+            echo "ready=false" >> $GITHUB_OUTPUT
+          fi
+
   build-and-deploy:
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

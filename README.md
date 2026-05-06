@@ -1,9 +1,11 @@
 # create-ad-cut
 
 > 상품 사진 1장 → GPT-5.x 분석 → 사람 검수 → GPT-image-2 로 **기본 4컷 + 커스텀 컷(최도 4개)** 광고 이미지 자동 생성.
-> Azure Container Apps + Azure Static Web Apps + Cosmos DB + Blob Storage 풌스택 OSS.
+> Azure Container Apps + Azure Static Web Apps + Cosmos DB + Blob Storage 풀스택 OSS.
 
 [English summary →](./README.en.md)
+
+![create-ad-cut 결과 화면 — 원본 입력과 룩북·정면·후면·커스텀 컷 비교](docs/images/main.png)
 
 이 리포는 [reference/index.html](reference/index.html) 의 워크플로우를 그대로 코드로 옮긴 오픈소스 구현체에서 이커머스 셀러용 기능을 확장한 버전입니다. 상품 사진 한 장으로 룩북 웩·정면·측면·후면 컷을 만들고, 원하는 장면(남자 모델, 야외 자연광 등)도 커스텀으로 추가하고, 마음에 안 들면 프롬프트를 고쳠 **재생성 · 비교**할 수 있습니다.
 
@@ -46,7 +48,7 @@ flowchart LR
 | 항목 | 비고 |
 |---|---|
 | Azure 구독 | Owner 또는 Contributor + User Access Administrator (역할 부여 권한 필요) |
-| **Azure OpenAI 리소스 (사전 배포)** | `gpt-5.4` 또는 `gpt-5.5`, `gpt-image-2` 두 개 deployment 필요. **이 리포의 IaC 는 AOAI 를 만들지 않습니다.** |
+| **Azure OpenAI 리소스 (사전 배포)** | `gpt-5.4` 또는 `gpt-5.5`, `gpt-image-2` 두 개 deployment 필요.  **이 리포의 IaC 는 AOAI 를 만들지 않습니다.** |
 | Azure CLI | 최신 |
 | azd (Azure Developer CLI) | 1.x (선택) |
 | Node.js 20 | 프론트엔드 빌드 |
