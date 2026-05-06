@@ -116,7 +116,84 @@ npm run dev                     # http://localhost:5173 (Vite proxy → /api/*)
 
 ---
 
-## 3. CI/CD (GitHub Actions)
+## 3. `BACKEND_API_KEY` 안내 — 어디에 입력하고, 어디에서 가져오는가
+
+### 3-1. 구조
+
+| 위치 | 설명 |
+|---|---|
+| **원본 (single source of truth)** | Azure Container Apps 의 secret store. secret 이름 `backend-api-key`, env 변수 `BACKEND_API_KEY` 가 `secretRef: backend-api-key` 로 바인딩됨. |
+| **사용 주체** | 모든 비-`healthz` 호출이 `X-API-Key: <BACKEND_API_KEY>` 헤더를 요구. |
+| **프론트 보관 위치** | 브라우저 `localStorage` (키: `create-ad-cut.apiKey`). 로그아웃 없이 동일 도메인에서만 재사용. |
+| **서버 저장** | 없음. 요청마다 [`backend/app/auth.py`](../backend/app/auth.py) 의 `require_api_key` 가 상수 비교해 적립 또는 401 반환. |
+
+### 3-2. UI 입력 흐름
+
+1. 맨 위 이미지 참조. SWA hostname 에 접속 → 헤더 우측 상단 **“API Key 설정”** 링크 클릭.
+2. 모달 창이 뜨면서 **“Backend API Key”** 입력란이 나타남.
+3. `BACKEND_API_KEY` 값 붙여넣고 **“저장”** → 브라우저 `localStorage` 에 보관.
+4. 이후 모든 `/api/*` 요청에 자동으로 헤더가 붙음.
+
+   > 만료 / 도만 / 섬에서 테스트 중이라 키를 모르는 동료가 많으면 아래 3-3 에서 관리자가 1회 가져와 전달하면 됩니다.
+
+### 3-3. 키 가져오기 (관리자용)
+
+```pwsh
+$RG  = "rg-create-ad-cut-dev"
+$ACA = (az containerapp list -g $RG --query "[0].name" -o tsv)
+
+# (a) env 에 평문으로 명시되어 있으면 대개 여기서 나옴
+az containerapp show -g $RG -n $ACA `
+  --query "properties.template.containers[0].env[?name=='BACKEND_API_KEY'].value | [0]" -o tsv
+
+# (b) 대신 secretRef 로 묶여 있으면 (이 리포의 Bicep 처림) secret store 에서 직접 꺼내야 함
+az containerapp secret show -g $RG -n $ACA --secret-name backend-api-key --query value -o tsv
+```
+
+둘 중 하나에서 값이 나와야 정상입니다. 한 줄로 자동 fallback 해서 이더보고 싶다면:
+
+```pwsh
+$key = az containerapp show -g $RG -n $ACA `
+  --query "properties.template.containers[0].env[?name=='BACKEND_API_KEY'].value | [0]" -o tsv
+if (-not $key) { $key = az containerapp secret show -g $RG -n $ACA --secret-name backend-api-key --query value -o tsv }
+Write-Host "BACKEND_API_KEY = $key"
+```
+
+### 3-4. 권한 제약
+
+| 필요 작업 | 최소 권한 |
+|---|---|
+| ACA 메타데이터 조회 (FQDN, image 등) | `Reader` |
+| **secret 값 읽기** (`az containerapp secret show`) | **`Container Apps Contributor` 또는 `Contributor`** — `Reader` 는 평문 secret 에 접근 불가 |
+| secret 값 교체 (`az containerapp secret set`) | `Container Apps Contributor` |
+
+그 외 제약:
+
+- 이 명령들은 **Azure Policy 의 `disableLocalAuth=true`** 을 켜도 문제 없음 (control plane 명령, AAD 로그인 인증).
+- ACA 가 **placeholder 이미지로 멈춰 있는 상태**에서도 secret 조회는 동작 (revision 상태와 무관).
+- secret 값을 **JSON output 으로 명시적으로 꺼내면 상스 history · 셋셍 log · CI artifact** 에 남을 수 있음. 설명·데모 목적이면 다 쓰고 나서 반드시 3-5 회전.
+
+### 3-5. 키 회전
+
+```pwsh
+$RG  = "rg-create-ad-cut-dev"
+$ACA = (az containerapp list -g $RG --query "[0].name" -o tsv)
+$new = [guid]::NewGuid().ToString()
+
+az containerapp secret set -g $RG -n $ACA --secrets backend-api-key=$new
+az containerapp update     -g $RG -n $ACA   # 새 secret 으로 revision 재생성
+
+Write-Host "새 BACKEND_API_KEY = $new (프론트에서 API Key 설정 다시 입력 필요)"
+```
+
+회전 수간
+
+- 이전 키는 즉시 무효화 → 프론트 로그인한 사용자는 다음 호출에서 401 을 받아 다시 입력을 요구받음.
+- GitHub Actions 를 쓰고 있으면 GitHub repo Secrets 의 `BACKEND_API_KEY` (아래 4장 표) 도 같이 교체.
+
+---
+
+## 4. CI/CD (GitHub Actions)
 
 ```pwsh
 az ad sp create-for-rbac `
@@ -149,7 +226,7 @@ az ad sp create-for-rbac `
 
 ---
 
-## 4. 검증
+## 5. 검증
 
 ```pwsh
 $SWA = "https://<swa-hostname>"
