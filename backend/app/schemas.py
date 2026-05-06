@@ -80,6 +80,38 @@ class GenerateIn(BaseModel):
     )
 
 
+# ---- Job (async) ---------------------------------------------------------
+
+JobStatus = Literal["running", "done", "partial", "failed"]
+JobItemStatus = Literal["pending", "running", "done", "failed"]
+
+
+class GenerateJobItem(BaseModel):
+    tempId: str = Field(..., description="Stable id of this item inside the job (not the generation id).")
+    mode: ShotMode
+    label: str
+    status: JobItemStatus
+    generationId: str | None = Field(None, description="Set once the image lands in `generations[]`.")
+    error: str | None = None
+
+
+class GenerateJobOut(BaseModel):
+    """Returned by `POST /generate` (202) and `GET /generate/jobs/{jobId}`.
+
+    `gpt-image-2` calls can take 1~5 minutes per shot, so the API is async:
+    the POST returns immediately with a job id and the client polls this
+    endpoint until `status` is no longer `"running"`. New images are appended
+    to `session.generations` as they complete.
+    """
+
+    sessionId: str
+    jobId: str
+    status: JobStatus
+    items: list[GenerateJobItem]
+    createdAt: datetime
+    updatedAt: datetime
+
+
 class GenerationResult(BaseModel):
     id: str = Field(..., description="Stable id of this generated image inside the session.")
     mode: ShotMode

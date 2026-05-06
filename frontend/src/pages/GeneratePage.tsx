@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
     ApiError,
     BuiltInMode,
     GenerateItem,
+    GenerateJobOut,
     generate,
+    getGenerateJob,
     listStyleHeaders,
     StyleHeaderInfo,
 } from "../api/client";
@@ -59,6 +61,12 @@ export default function GeneratePage() {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [loaded, setLoaded] = useState(false);
+    const [job, setJob] = useState<GenerateJobOut | null>(null);
+    const pollTimerRef = useRef<number | null>(null);
+
+    useEffect(() => () => {
+        if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
+    }, []);
 
     useEffect(() => {
         listStyleHeaders().then(
@@ -132,8 +140,11 @@ export default function GeneratePage() {
         if (totalCount === 0) return;
         setBusy(true);
         setError(null);
+        setJob(null);
         try {
-            await generate(sessionId, items);
+            const initial = await generate(sessionId, items);
+            setJob(initial);
+            await pollUntilDone(initial.jobId);
             navigate(`/sessions/${sessionId}/results`);
         } catch (err) {
             setError(
@@ -146,6 +157,25 @@ export default function GeneratePage() {
         } finally {
             setBusy(false);
         }
+    }
+
+    /**
+     * gpt-image-2 호출은 쇷당 1~5분 걸리므로 최대 12분까지 기다리며 3초마다 폴링한다.
+     * SWA Linked Backend 게이트웨이가 긴 HTTP 요청을 자르는 문제를 우회하기 위해
+     * generate 는 이미 202 + jobId 로 즉시 끊고, 여기서는 GET 만 반복한다.
+     */
+    async function pollUntilDone(jobId: string): Promise<GenerateJobOut> {
+        const start = Date.now();
+        const maxMs = 12 * 60 * 1000;
+        while (Date.now() - start < maxMs) {
+            await new Promise<void>((resolve) => {
+                pollTimerRef.current = window.setTimeout(() => resolve(), 3000);
+            });
+            const cur = await getGenerateJob(sessionId, jobId);
+            setJob(cur);
+            if (cur.status !== "running") return cur;
+        }
+        throw new Error("생성 시간이 12분을 넘었습니다. 결과 페이지에서 일부 이미지가 나왔는지 확인해 주세요.");
     }
 
     return (
@@ -223,8 +253,27 @@ export default function GeneratePage() {
                 </div>
 
                 {busy && (
-                    <div className="flex items-center gap-3 p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm">
-                        <Spinner /> {totalCount}개 컷 생성 중… 잠시 기다려 주세요.
+                    <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm space-y-2">
+                        <div className="flex items-center gap-3">
+                            <Spinner /> {totalCount}개 컷 생성 중… 컷당 일반적으로 1~5분 소요됩니다 (최대 12분까지 대기).
+                        </div>
+                        {job && (
+                            <ul className="text-xs grid sm:grid-cols-2 gap-1.5 mt-1">
+                                {job.items.map((it) => (
+                                    <li key={it.tempId} className="flex items-center gap-2">
+                                        <span className="inline-flex w-4 h-4 items-center justify-center">
+                                            {it.status === "done" && <span className="text-green-600">✓</span>}
+                                            {it.status === "failed" && <span className="text-red-600">✕</span>}
+                                            {it.status === "running" && <Spinner />}
+                                            {it.status === "pending" && <span className="text-blue-400">·</span>}
+                                        </span>
+                                        <span className="font-medium">{it.label}</span>
+                                        <span className="text-blue-500/70">({it.status})</span>
+                                        {it.error && <span className="text-red-600 truncate max-w-[14rem]" title={it.error}>{it.error}</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
                 )}
             </div>

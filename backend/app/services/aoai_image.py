@@ -20,10 +20,14 @@ from app.config import get_settings
 @lru_cache(maxsize=1)
 def _aoai_client() -> AzureOpenAI:
     settings = get_settings()
+    # gpt-image-2 calls can take 1~5 minutes per shot, so set a 10-minute
+    # ceiling explicitly (the openai SDK default is shorter than that for some
+    # transports). `connect=10s` keeps initial DNS/TLS failures fast.
     return AzureOpenAI(
         api_key=settings.azure_openai_api_key,
         api_version=settings.azure_openai_api_version,
         azure_endpoint=settings.azure_openai_endpoint,
+        timeout=httpx.Timeout(600.0, connect=10.0),
     )
 
 
@@ -102,6 +106,6 @@ def render_image(
     if getattr(payload, "b64_json", None):
         return base64.b64decode(payload.b64_json)
     if getattr(payload, "url", None):
-        with httpx.Client(timeout=60.0) as http:
+        with httpx.Client(timeout=600.0) as http:
             return http.get(payload.url).content
     raise RuntimeError("gpt-image-2 returned neither b64_json nor url payload.")

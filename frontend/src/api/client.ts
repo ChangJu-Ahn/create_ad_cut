@@ -52,9 +52,27 @@ export interface GenerationResult {
     createdAt: string;
 }
 
-export interface GenerateOut {
+// ---- Async generate jobs ---------------------------------------------------
+
+export type JobStatus = "running" | "done" | "partial" | "failed";
+export type JobItemStatus = "pending" | "running" | "done" | "failed";
+
+export interface GenerateJobItem {
+    tempId: string;
+    mode: ShotMode;
+    label: string;
+    status: JobItemStatus;
+    generationId: string | null;
+    error: string | null;
+}
+
+export interface GenerateJobOut {
     sessionId: string;
-    results: GenerationResult[];
+    jobId: string;
+    status: JobStatus;
+    items: GenerateJobItem[];
+    createdAt: string;
+    updatedAt: string;
 }
 
 export interface SessionView {
@@ -134,10 +152,14 @@ export function updatePrompt(sessionId: string, promptMd: string) {
 }
 
 export function generate(sessionId: string, items: GenerateItem[]) {
-    return request<GenerateOut>(`/sessions/${sessionId}/generate`, {
+    return request<GenerateJobOut>(`/sessions/${sessionId}/generate`, {
         method: "POST",
         body: JSON.stringify({ items }),
     });
+}
+
+export function getGenerateJob(sessionId: string, jobId: string) {
+    return request<GenerateJobOut>(`/sessions/${sessionId}/generate/jobs/${jobId}`);
 }
 
 export function getSession(sessionId: string) {

@@ -41,21 +41,28 @@ flowchart TB
 3. **모드 선택 · 프롬프트 편집 (`GET /api/style-headers`)**
    - 프론트가 빌트인 모드 4종의 라벨/설명/기본 스타일 헤더/`useReference`/`sceneCompose` 메타를 한 번에 가져와 각 컷 카드에 펼침·편집용으로 렌더
    - 사용자는 원하면 헤더 내용을 직접 고치거나, **커스텀 컷(최돀 4개)**를 완전히 자유롭게 추가 가능
-4. **Generate (`POST /api/sessions/{id}/generate`)**
-   - 입력 이미지를 Blob에서 1번 다운로드 → 모든 컷에서 재사용
-   - `(스타일 헤더 + Output_Prompt)` 조합 → `useReference`/`sceneCompose` 조합에 따라
-     `gpt-image-2 images.edit` (high/low fidelity) 또는 `images.generate` 를 병렬 호출
-   - 결과 PNG 를 `sessions/<id>/gen_<id>.png` 로 업로드, 결과는 SAS URL 로 응답
+4. **Generate (`POST /api/sessions/{id}/generate` → 202)**
+   - 입력 메타 + 새 jobId 를 세션 문서의 `jobs[]` 에 임베딩 (최근 20개만 보관) 후 **비동기** 응답
+   - 백그라운드 `asyncio.create_task` 로 입력 이미지를 Blob 에서 1번 다운로드하고
+     `(스타일 헤더 + Output_Prompt)` 조합을 `useReference`/`sceneCompose` 에 따라
+     `gpt-image-2 images.edit` (high/low fidelity) 또는 `images.generate` 로 **병렬 호출**
+   - 각 완료 이미지를 `sessions/<id>/gen_<id>.png` 로 업로드 후 per-session asyncio 락 아래에서
+     `generations` append + 해당 아이템 `status` 갱신
    - 결과는 **누적** (이전 generations 보존) → 결과 페이지에서 v1→v2→v3 비교 가능
-5. **Results (`GET /api/sessions/{id}`)**
+5. **Job polling (`GET /api/sessions/{id}/generate/jobs/{jobId}`)**
+   - 프론트가 3초 간격으로 상태를 모니터링 (`pending` → `running` → `done` / `failed`)
+   - 전체 잡 상태: `running` → `done` / `partial` / `failed`. `running` 이 아닌 수간 다음 결과 페이지 로 이동
+6. **Results (`GET /api/sessions/{id}`)**
    - Cosmos 문서를 다시 읽어 모든 generations 의 SAS URL 을 갱신해 반환
 
 ## 동시성 / 시간 예산
 
-- 4컷 병렬 생성 = `asyncio.gather` + `images.edit` 호출.
-- 단일 컷 평균 30~60초 → 4컷 동시 시 약 60~120초. SWA Linked Backend 의
-  기본 idle timeout 240s 안에 들어가도록 설계.
-- AOAI 429 발생 시 호출 측에서 `Retry-After` 헤더를 그대로 반영해 클라이언트에 전달.
+- 4컷 병렬 생성 = 서버 쥐에서 `asyncio.gather` + `images.edit` 호출.
+- 단일 컷 평균 1~5분 → 4컷 동시 시 최악 5~6분. SWA Linked Backend 의
+  HTTP 프록시 타임아웃(≈4분)을 넘을 수 있으므로 **생성 엔드포인트는 202 + jobId 로
+  즉시 끊고 프론트가 3초 간격으로 GET 을 폴링**하는 패턴을 쓴다. 이로써 게이트웨이
+  timeout 과 무관하게 실제 생성은 최대 12분까지 안전하게 기다릴 수 있다.
+- AOAI 429 발생 시 해당 아이템만 `failed` 로 마킹되고 나머지 아이템은 계속 진행 → 전체 잡 상태는 `partial`.
 
 ## Cosmos DB 모델
 

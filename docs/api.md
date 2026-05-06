@@ -80,16 +80,22 @@ curl -X PATCH $BASE/api/sessions/$SID/prompt \
 
 ## 4. POST `/api/sessions/{id}/generate`
 
-선택한 컷을 병렬로 생성합니다 (단일 컷 평균 30~60초). 호출할 때마다 결과가
-`session.generations`에 **누적**되므로, 같은 모드를 새 프롬프트로 재호출하면
-이전 버전과 비교할 수 있는 새 이미지가 추가됩니다.
+선택한 컷을 병렬로 생성합니다. **gpt-image-2 호출 하나당 1~5분이 걸리며**
+SWA Linked Backend 의 게이트웨이 타임아웃(≈4분)을 넘길 수 있으므로
+이 엔드포인트는 **비동기** 로 동작합니다. 완료를 기다리지 않고
+`202 Accepted` + `jobId` 를 즉시 반환하고, 클라이언트는
+[`GET /generate/jobs/{jobId}`](#5-get-apisessionsidgeneratejobsjobid) 를 폴링하면
+됩니다 (권장 3초 간격, 최대 12분). 호출할 때마다 결과가
+`session.generations` 에 **누적**됩니다.
 
 요청 본문:
 - `items[]` — 1~8개. 각 item:
   - `mode`: `lookbook` | `front` | `side` | `back` | `custom`
   - `label` (선택, custom은 필수): 표시용 이름
   - `promptHeader` (선택, custom은 필수): 사용자 수정 스타일 헤더. 빌트인 모드에서는 생략하면 기본 헤더가 사용됨
-  - `useReference` (선택): true면 `images.edit`(원본 앵커), false면 `images.generate`(텍스트 프롬프트만). 생략 시 모드별 기본값(`lookbook=false`, 그 외 `true`)
+  - `useReference` (선택): true면 `images.edit`(원본 앵커), false면 `images.generate`(텍스트 프롬프트만). 생략 시 모드별 기본값 (전체 `true`)
+  - `sceneCompose` (선택): true면 `images.edit` fidelity를 `low` 로 낮추고 사람·배경·포즈를 합성. 생략 시 모드 기본값 (`lookbook=true`, 그 외 `false`)
+  - `includeAnalysisPrompt` (선택, 기본 `true`): 분석 프롬프트를 스타일 헤더와 결합할지 여부
 
 ```bash
 curl -X POST $BASE/api/sessions/$SID/generate \
@@ -105,28 +111,26 @@ curl -X POST $BASE/api/sessions/$SID/generate \
         "mode": "custom",
         "label": "남자 모델 룩북",
         "promptHeader": "1024x1024 정방형, 30대 남성 모델이 도시 야외에서 자연광으로 상품을 자연스럽게 착용한 데일리 컷.",
-        "useReference": false
+        "useReference": false,
+        "sceneCompose": true
       }
     ]
   }'
 ```
 
-**200**
+**202 Accepted**
 
 ```json
 {
   "sessionId": "f3a1c8d2...",
-  "results": [
-    {
-      "id": "9a4b7c1e2f30",
-      "mode": "lookbook",
-      "label": "룩북 착용컷",
-      "imageUrl": "https://...?sig=...",
-      "promptHeader": "이 이미지는 반드시 사람이 등장하는...",
-      "usedPrompt": "이 이미지는 반드시 ...\n\n[착용할 상품의 디테일 참고...]\n\n...",
-      "createdAt": "..."
-    }
-  ]
+  "jobId": "4f9c0e2a8b3d1162",
+  "status": "running",
+  "items": [
+    { "tempId": "a1", "mode": "lookbook", "label": "룩북 착용컷", "status": "pending", "generationId": null, "error": null },
+    { "tempId": "a2", "mode": "front",    "label": "정면 스튜디오", "status": "pending", "generationId": null, "error": null }
+  ],
+  "createdAt": "...",
+  "updatedAt": "..."
 }
 ```
 
@@ -136,9 +140,41 @@ curl -X POST $BASE/api/sessions/$SID/generate \
 
 ---
 
+## 5. GET `/api/sessions/{id}/generate/jobs/{jobId}`
+
+진행 중인 생성 잡의 현재 상태를 반환합니다. `status` 가 `running` 이 아니면 종료 상태.
+
+```bash
+curl $BASE/api/sessions/$SID/generate/jobs/$JID -H "X-API-Key: $API_KEY"
+```
+
+**200**
+
+```json
+{
+  "sessionId": "f3a1c8d2...",
+  "jobId": "4f9c0e2a8b3d1162",
+  "status": "done",
+  "items": [
+    { "tempId": "a1", "mode": "lookbook", "label": "룩북 착용컷", "status": "done",   "generationId": "9a4b7c1e2f30", "error": null },
+    { "tempId": "a2", "mode": "front",    "label": "정면 스튜디오", "status": "failed", "generationId": null, "error": "AOAI 429 ..." }
+  ],
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+```
+
+`status` 가능 값: `running` / `done` (전체 성공) / `partial` (일부 성공+일부 실패) / `failed` (전체 실패).
+완료된 아이템의 `generationId` 는 `GET /api/sessions/{id}` 의 `generations[*].id` 와 일치합니다.
+
+오류:
+- `404` `job_not_found` — 해당 세션에 그 jobId 가 없음 (최근 20개만 보관)
+
+---
+
 ## 4-1. GET `/api/style-headers`
 
-빌트인 모드 4종의 라벨/설명/기본 스타일 헤더/기본 useReference 값을 반환합니다.
+빌트인 모드 4종의 라벨/설명/기본 스타일 헤더/기본 useReference/sceneCompose 값을 반환합니다.
 프론트엔드 생성 페이지가 컷별 프롬프트를 사용자에게 노출/편집하기 위해 사용합니다.
 
 ```bash
@@ -154,7 +190,8 @@ curl $BASE/api/style-headers -H "X-API-Key: $API_KEY"
     "label": "룩북 착용컷",
     "description": "모델이 착용/소지한 실사 사진",
     "header": "이 이미지는 반드시 사람이 등장하는...",
-    "useReference": false
+    "useReference": true,
+    "sceneCompose": true
   }
 ]
 ```

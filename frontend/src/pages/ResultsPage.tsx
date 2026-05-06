@@ -6,6 +6,7 @@ import {
     GenerationResult,
     ShotMode,
     generate,
+    getGenerateJob,
     getSession,
     SessionView,
 } from "../api/client";
@@ -92,7 +93,26 @@ export default function ResultsPage() {
             return rest;
         });
         try {
-            await generate(sessionId, [item]);
+            // 202 + jobId 로 즉시 끊고, 완료될 때까지 폴링.
+            // gpt-image-2 호출은 1~5분이므로 이 패턴이 동기 요청보다 안전함.
+            const initial = await generate(sessionId, [item]);
+            const start = Date.now();
+            const maxMs = 12 * 60 * 1000;
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                if (Date.now() - start > maxMs) {
+                    throw new Error("재생성 시간이 12분을 넘었습니다.");
+                }
+                await new Promise<void>((r) => setTimeout(r, 3000));
+                const cur = await getGenerateJob(sessionId, initial.jobId);
+                if (cur.status !== "running") {
+                    if (cur.items.some((i) => i.status === "failed")) {
+                        const msg = cur.items.find((i) => i.status === "failed")?.error ?? "재생성 실패";
+                        throw new Error(msg);
+                    }
+                    break;
+                }
+            }
             const fresh = await getSession(sessionId);
             setSession(fresh);
         } catch (err) {
