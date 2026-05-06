@@ -7,7 +7,7 @@
 
 ![create-ad-cut 결과 화면 — 원본 입력과 룩북·정면·후면·커스텀 컷 비교](docs/images/main.png)
 
-이 리포는 [reference/index.html](reference/index.html) 의 워크플로우를 그대로 코드로 옮긴 오픈소스 구현체에서 이커머스 셀러용 기능을 확장한 버전입니다. 상품 사진 한 장으로 룩북 웩·정면·측면·후면 컷을 만들고, 원하는 장면(남자 모델, 야외 자연광 등)도 커스텀으로 추가하고, 마음에 안 들면 프롬프트를 고쳠 **재생성 · 비교**할 수 있습니다.
+이 리포는 [원본 한국어 가이드](https://ms.studydev.com/azure/ecommerce_product_studio/) 의 워크플로우를 그대로 코드로 옮긴 오픈소스 구현체에서 이커머스 셀러용 기능을 확장한 버전입니다. 상품 사진 한 장으로 룩북 웩·정면·측면·후면 컷을 만들고, 원하는 장면(남자 모델, 야외 자연광 등)도 커스텀으로 추가하고, 마음에 안 들면 프롬프트를 고쳠 **재생성 · 비교**할 수 있습니다.
 
 ---
 
@@ -136,7 +136,6 @@ frontend/   React + Vite + TS SPA (4페이지 흐름)
 infra/      Bicep modules + main + parameters
 .github/    Actions workflows (ci-* x2, deploy-* x3)
 docs/       아키텍처 / API / 프롬프트 설계 / 배포 가이드
-reference/  원본 가이드 문서 (HTML)
 ```
 
 ---
@@ -147,7 +146,7 @@ reference/  원본 가이드 문서 (HTML)
 - [docs/api.md](docs/api.md) — 엔드포인트별 cURL 예시
 - [docs/prompt-design.md](docs/prompt-design.md) — system / user / style_headers 분리 원리
 - [docs/deployment.md](docs/deployment.md) — SP 발급, secret 등록, 배포 트러블슈팅
-- [reference/index.html](reference/index.html) — 원본 한국어 가이드
+- [원본 한국어 가이드](https://ms.studydev.com/azure/ecommerce_product_studio/) — 분석/생성 워크플로우 설계 노트
 
 ---
 

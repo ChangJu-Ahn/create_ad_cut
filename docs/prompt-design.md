@@ -1,6 +1,6 @@
 # 프롬프트 설계 원칙
 
-이 리포는 [reference/index.html](../reference/index.html) 의 분석/생성 분리 패턴을 그대로 따릅니다.
+이 리포는 [원본 한국어 가이드](https://ms.studydev.com/azure/ecommerce_product_studio/) 의 분석/생성 분리 패턴을 그대로 따릅니다.
 
 ## 3-tier 구조
 

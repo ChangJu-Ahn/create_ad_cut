@@ -2,7 +2,9 @@
 
 Each header is prepended to the human-reviewed `Output_Prompt` before the
 final image generation call. The wording mirrors the matrix described in
-`reference/index.html` so behaviour stays consistent with the design doc.
+the original Korean design guide at
+https://ms.studydev.com/azure/ecommerce_product_studio/ so behaviour stays
+consistent with the design doc.
 """
 
 from __future__ import annotations
