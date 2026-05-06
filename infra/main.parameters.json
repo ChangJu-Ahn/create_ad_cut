@@ -1,0 +1,14 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "environmentName": { "value": "${AZURE_ENV_NAME}" },
+        "location": { "value": "${AZURE_LOCATION=eastus2}" },
+        "azureOpenAiEndpoint": { "value": "${AZURE_OPENAI_ENDPOINT}" },
+        "azureOpenAiApiKey": { "value": "${AZURE_OPENAI_API_KEY}" },
+        "azureOpenAiApiVersion": { "value": "${AZURE_OPENAI_API_VERSION=2025-04-01-preview}" },
+        "azureOpenAiAnalysisDeployment": { "value": "${AZURE_OPENAI_ANALYSIS_DEPLOYMENT=gpt-5.5}" },
+        "azureOpenAiImageDeployment": { "value": "${AZURE_OPENAI_IMAGE_DEPLOYMENT=gpt-image-2}" },
+        "backendApiKey": { "value": "${BACKEND_API_KEY}" }
+    }
+}

@@ -1,0 +1,10 @@
+// Resource type abbreviations following Microsoft CAF guidance.
+{
+    "containerApp": "ca",
+    "containerAppsEnvironment": "cae",
+    "containerRegistry": "cr",
+    "cosmosDbAccount": "cosmos",
+    "logAnalyticsWorkspace": "log",
+    "staticWebApp": "stapp",
+    "storageAccount": "st"
+}

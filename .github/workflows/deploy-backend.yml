@@ -1,0 +1,47 @@
+name: deploy-backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+env:
+  AZURE_RG: ${{ vars.AZURE_RG }}
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  ACA_NAME: ${{ vars.ACA_NAME }}
+  IMAGE_NAME: create-ad-cut-backend
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: ACR login
+        run: az acr login -n "$ACR_NAME"
+
+      - name: Build & push image
+        run: |
+          IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${GITHUB_SHA}"
+          docker build -t "$IMAGE" -f backend/Dockerfile backend
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Update Container App revision
+        run: |
+          az containerapp update \
+            -g "$AZURE_RG" \
+            -n "$ACA_NAME" \
+            --image "$IMAGE"
+
+      - name: Show app URL
+        run: |
+          FQDN=$(az containerapp show -g "$AZURE_RG" -n "$ACA_NAME" --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Backend URL: https://$FQDN" >> $GITHUB_STEP_SUMMARY

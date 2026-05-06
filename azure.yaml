@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: create-ad-cut
+metadata:
+  template: create-ad-cut@1.0.0
+
+services:
+  backend:
+    project: ./backend
+    language: python
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  frontend:
+    project: ./frontend
+    language: ts
+    host: staticwebapp
+    dist: dist
+
+hooks:
+  postprovision:
+    windows:
+      shell: pwsh
+      run: |
+        Write-Host "✅ Provisioning complete."
+        Write-Host "  Backend (ACA) FQDN: $env:BACKEND_FQDN"
+        Write-Host "  Static Web App URL: https://$env:SWA_HOSTNAME"
+    posix:
+      shell: sh
+      run: |
+        echo "✅ Provisioning complete."
+        echo "  Backend (ACA) FQDN: $BACKEND_FQDN"
+        echo "  Static Web App URL: https://$SWA_HOSTNAME"
