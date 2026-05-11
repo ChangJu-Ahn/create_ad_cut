@@ -14,7 +14,7 @@ def test_all_four_modes_present() -> None:
 @pytest.mark.parametrize("mode", ["lookbook", "front", "side", "back"])
 def test_each_header_is_korean_and_mentions_size(mode: str) -> None:
     header = header_for(mode)  # type: ignore[arg-type]
-    assert "1024x1024" in header
+    assert "1024x1024" in header or "1024×1024" in header
     # Sanity: Korean characters present
     assert any("\uac00" <= ch <= "\ud7a3" for ch in header)
 

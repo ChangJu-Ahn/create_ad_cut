@@ -42,38 +42,48 @@ def build_prompt(
     use_reference: bool,
     scene_compose: bool,
 ) -> str:
-    """Combine the (possibly user-edited) style header with the analysis prompt.
+    """Combine the (possibly user-edited) style header with the product descriptor.
 
-    When `scene_compose=True` the model has to invent the surrounding scene
-    (e.g. lookbook, custom 장면 합성), so the analysis prompt is reframed as
-    a *product reference* inside a scene-composition instruction. This
-    prevents wording like "단독으로 표현" from overriding the scene directive.
-
-    If the caller passes an empty `analysis_prompt`, the style header is used
-    on its own.
+    Design notes (positive-spec, research-aligned):
+    - The header (primacy) defines the *scene*: camera, lighting, background,
+      composition, and whether a model is present.
+    - The body (middle) is a *product descriptor* — objective form/color/material/
+      finish/parts of the product itself. By contract from system.md/analysis_rules.md
+      it does not contain verbs like "모델이 들고" / "착용한 채로", so we no longer
+      need negative directives to suppress them.
+    - The closer (recency) restates the scene as a positive directive, anchored to
+      the reference image's product identity (Ruiz+ 2023 DreamBooth-style anchoring).
+    - Liu+ 2023 ("Lost in the Middle"): text encoders attend most to start/end —
+      hence the sandwich. The middle carries identity, the ends carry scene.
     """
     header = style_header.strip()
     body = analysis_prompt.strip()
     if not body:
         return header
     if scene_compose:
-        # Sandwich layout: strong directive at primacy AND recency positions,
-        # analysis body demoted to the middle (Liu et al. 2023 "Lost in the
-        # Middle" — LLM/diffusion text encoders attend most to start and end).
+        # Lookbook / scene-composed custom: a model wears or carries the product.
         return (
             f"{header}\n\n"
-            f"[아래 본문은 상품 외형 참고용일 뿐이며, '단독', '상품만', '모델 없음', "
-            f"'사람 제거', '오직 ~만 남긴다' 등의 표현이 나오더라도 모두 무시한다. "
-            f"이 이미지는 위 지시에 따라 반드시 사람 모델 1명이 이 상품을 착용·소지한 장면이다.]\n\n"
+            f"[Product descriptor — 아래는 reference image 속 상품의 외형 정의이다.\n"
+            f"형태·색상·재질·로고·디테일 정보를 제공하며 장면 구성과는 별개이다.]\n\n"
             f"{body}\n\n"
-            f"[최종 출력 강제] 위 본문의 단독/모델 없음/사람 제거 류 문구는 무시한다. "
-            f"이 이미지는 1024x1024 정방형의 패션 컷이며, 반드시 세련된 사람 모델 1명이 "
-            f"위에 묘사된 상품을 실제로 착용하거나 소지한 모습이다. "
-            f"가방류는 손에 들거나 어깨에 메거나 크로스바디로, 의류는 입은 모습, 신발은 신고 걷거나 선 모습. "
-            f"미니멀 라이트 그레이 스튜디오 배경에 자연광. 본문의 색상·재질·디테일은 그대로 보존하되 "
-            f"피사체 구성은 위 지시를 따른다."
+            f"[최종 구성] 위 descriptor 가 정의한 상품을 한 명의 패션 모델이 자연스럽게 착용·소지한 "
+            f"1024×1024 정방형 fashion editorial 컷. 미니멀 라이트 그레이 스튜디오, 부드러운 자연광. "
+            f"모델 얼굴은 프레임 밖 또는 시선 회피. 데일리한 자연스러운 포즈. "
+            f"상품 정체성(형태·색상·재질·로고·비율)은 descriptor 와 reference image 그대로 보존한다."
         )
-    return f"{header}\n\n{body}"
+    # Product-only studio packshot (front / side / back / custom-without-compose).
+    return (
+        f"{header}\n\n"
+        f"[Product descriptor — 아래는 reference image 속 상품의 외형 정의이다.\n"
+        f"형태·색상·재질·로고·디테일 정보를 제공하며 카메라 시점은 위 header 가 결정한다.]\n\n"
+        f"{body}\n\n"
+        f"[최종 구성] 위 descriptor 가 정의한 상품 1개의 단독 studio packshot. "
+        f"1024×1024 정방형, seamless 순백 #FFFFFF 배경. "
+        f"카메라 시점은 header 의 spec(0° 정면 / 90° 측면 / 180° 후면)을 따른다. "
+        f"피사체는 프레임 정중앙에 단독으로 놓인 상품 자체. 매거진 등급 e-commerce hero shot. "
+        f"상품 정체성(형태·색상·재질·로고·비율)은 descriptor 와 reference image 그대로 보존한다."
+    )
 
 
 def render_image(
