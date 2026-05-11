@@ -12,6 +12,7 @@ services:
     docker:
       path: Dockerfile
       context: .
+      remoteBuild: true
 
   frontend:
     project: ./frontend
@@ -33,3 +34,29 @@ hooks:
         echo "✅ Provisioning complete."
         echo "  Backend (ACA) FQDN: $BACKEND_FQDN"
         echo "  Static Web App URL: https://$SWA_HOSTNAME"
+  postdeploy:
+    windows:
+      shell: pwsh
+      run: |
+        # Bicep deploys ACA with a placeholder image on port 80. After azd
+        # deploy swaps in the real backend image, align ingress target-port
+        # with the FastAPI listener (8000) so the app is actually reachable.
+        if ($env:BACKEND_NAME -and $env:AZURE_RESOURCE_GROUP) {
+          az containerapp ingress update `
+            -g $env:AZURE_RESOURCE_GROUP `
+            -n $env:BACKEND_NAME `
+            --type external `
+            --target-port 8000 | Out-Null
+          Write-Host "✅ Container App ingress target-port set to 8000."
+        }
+    posix:
+      shell: sh
+      run: |
+        if [ -n "$BACKEND_NAME" ] && [ -n "$AZURE_RESOURCE_GROUP" ]; then
+          az containerapp ingress update \
+            -g "$AZURE_RESOURCE_GROUP" \
+            -n "$BACKEND_NAME" \
+            --type external \
+            --target-port 8000 >/dev/null
+          echo "✅ Container App ingress target-port set to 8000."
+        fi

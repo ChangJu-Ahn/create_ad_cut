@@ -58,6 +58,13 @@ jobs:
             -g "$AZURE_RG" \
             -n "$ACA_NAME" \
             --image "$IMAGE"
+          # Ensure ingress target port matches the FastAPI listener (8000),
+          # in case the previous revision was still on the bootstrap port (80).
+          az containerapp ingress update \
+            -g "$AZURE_RG" \
+            -n "$ACA_NAME" \
+            --type external \
+            --target-port 8000
 
       - name: Show app URL
         run: |
