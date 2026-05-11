@@ -10,20 +10,20 @@ flowchart TB
 
     subgraph Azure
         SWA[Azure Static Web Apps<br/>정적 호스팅 + Linked Backend 프록시]
-        ACA[Azure Container Apps<br/>FastAPI 백엔드<br/>System-assigned Managed Identity]
+        ACA[Azure Container Apps<br/>FastAPI 백엔드<br/>User-assigned Managed Identity]
         ACR[(Azure Container Registry)]
         BLOB[(Blob Storage<br/>private container 'studio')]
         COS[(Cosmos DB NoSQL<br/>/sessionId PK)]
-        AOAI[(Azure OpenAI<br/>gpt-5.5 + gpt-image-2<br/>※ 사전 배포)]
+        AOAI[(Azure OpenAI<br/>gpt-5.4 + gpt-image-2)]
     end
 
     UI -- HTTPS /api/* + X-API-Key --> SWA
     SWA -- Linked Backend (same-origin proxy) --> ACA
-    ACA -- ACR Pull (MI) --> ACR
-    ACA -- chat.completions.create --> AOAI
-    ACA -- images.edit --> AOAI
-    ACA -- upload + SAS --> BLOB
-    ACA -- upsert/get session doc --> COS
+    ACA -- ACR Pull (UAMI) --> ACR
+    ACA -- AAD: chat.completions.create --> AOAI
+    ACA -- AAD: images.edit / generate --> AOAI
+    ACA -- AAD: upload + SAS --> BLOB
+    ACA -- AAD: upsert/get session doc --> COS
 ```
 
 ## 단계별 흐름
@@ -105,12 +105,12 @@ flowchart TB
 ## 보안 / Secrets
 
 - 외부 → 백엔드: `X-API-Key` 헤더 검증
-- 백엔드 → AOAI: API key (다른 구독의 사전 배포 리소스이므로 키 사용)
-- 백엔드 → Storage / Cosmos: **AAD via DefaultAzureCredential**
+- 백엔드 → AOAI / Storage / Cosmos: **AAD via DefaultAzureCredential (User-assigned MI)**
   - 로컬: 개발자의 `az login` ID
-  - 클라우드: ACA 의 system-assigned MI
-  - 정책 환경 (`disableLocalAuth=true` / `allowSharedKeyAccess=false`) 대응 표준
-- ACA → ACR: 시스템 할당 Managed Identity + AcrPull (코드/시크릿 0개)
+  - 클라우드: ACA 에 attach 된 **User-assigned Managed Identity**
+  - AOAI 는 `Cognitive Services OpenAI User`, Storage 는 `Storage Blob Data Contributor`, Cosmos 는 `Cosmos DB Built-in Data Contributor` 역할을 IaC 가 UAMI 에 부여
+  - 정책 환경 (`disableLocalAuth=true` / `allowSharedKeyAccess=false`) 대응 표준 — AOAI API 키 복사/입력 없음
+- ACA → ACR: User-assigned Managed Identity + AcrPull (UAMI 를 먼저 만들고 RBAC 부여 후 ACA 를 생성해 첫 배포부터 경합 제거)
 - SWA → ACA: Linked Backend 가 ACA 에 EasyAuth 를 자동 활성화 → 외부 직접
   호출 차단, SWA hostname 만 통과
 - Blob SAS: 계정 키 사용 안 함. **User Delegation Key** (AAD 서명) 로

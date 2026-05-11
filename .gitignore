@@ -46,3 +46,9 @@ tmp/
 
 # --- Local provisioning artifacts ---
 .deploy.*
+
+# --- Personal/local docs (not for upstream) ---
+README.IaC-cj.md
+
+# --- Bicep build artifacts ---
+infra/main.json

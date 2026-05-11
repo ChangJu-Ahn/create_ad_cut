@@ -21,19 +21,38 @@ Turn a single product photo into 4 ad-ready shots — `lookbook`, `front`, `side
 
 ## Pre-requisites
 
-- Pre-deployed Azure OpenAI resource with `gpt-5.4` (or `gpt-5.5`) and `gpt-image-2` deployments. **The IaC does NOT create AOAI.**
-- Endpoint URL + API key are passed in as parameters and stored as Container App secrets.
+- Azure subscription with Owner (or Contributor + User Access Administrator).
+- Azure OpenAI quota for `gpt-5.4` and `gpt-image-2` in your target region. If those models or capacity are unavailable, override the model defaults (see below). **The AOAI account itself IS created by this IaC.**
 
-## Quick start
+## Quick start (fork & clone)
 
 ```bash
-azd init -t .
+# After forking on GitHub and cloning your fork
+cd create_ad_cut
+azd auth login
+az login
 azd env new dev
-azd env set AZURE_OPENAI_ENDPOINT  https://<your-aoai>.openai.azure.com/
-azd env set AZURE_OPENAI_API_KEY   <your-aoai-key>
-azd env set BACKEND_API_KEY        <random-string>
+azd env set AZURE_LOCATION eastus2
 azd up
 ```
+
+That's it. `azd up` provisions everything: a user-assigned managed identity, ACR, Storage, Cosmos, Azure OpenAI account + `gpt-5.4` and `gpt-image-2` deployments, the Container App (FastAPI backend), and the Static Web App with a Linked Backend. The `BACKEND_API_KEY` is generated deterministically per environment and injected as an ACA secret. AOAI is called via AAD using the UAMI (no API key copying).
+
+To override defaults (region, model, capacity) before `azd up`:
+
+```bash
+azd env set AZURE_OPENAI_LOCATION                eastus2
+azd env set AZURE_OPENAI_ANALYSIS_MODEL          gpt-5
+azd env set AZURE_OPENAI_ANALYSIS_MODEL_VERSION  2025-08-07
+azd env set AZURE_OPENAI_ANALYSIS_CAPACITY       25
+azd env set AZURE_OPENAI_IMAGE_MODEL             gpt-image-1.5
+azd env set AZURE_OPENAI_IMAGE_MODEL_VERSION     2025-12-16
+azd env set AZURE_OPENAI_IMAGE_DEPLOYMENT        gpt-image-1.5
+```
+
+> Do **not** run `azd init -t .` inside the cloned repo — that command is for
+> creating a brand-new project from a template, and will fail with a
+> "directory overlaps with template source" error when run here.
 
 ## Endpoints (auth: `X-API-Key`)
 

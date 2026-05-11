@@ -1,0 +1,5 @@
+name: create-ad-cut
+version: 1.0.0
+metadata:
+  template: create-ad-cut@1.0.0
+  # source: /path/to/template
