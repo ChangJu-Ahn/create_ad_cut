@@ -4,11 +4,18 @@
     "parameters": {
         "environmentName": { "value": "${AZURE_ENV_NAME}" },
         "location": { "value": "${AZURE_LOCATION=eastus2}" },
-        "azureOpenAiEndpoint": { "value": "${AZURE_OPENAI_ENDPOINT}" },
-        "azureOpenAiApiKey": { "value": "${AZURE_OPENAI_API_KEY}" },
+        "openAiLocation": { "value": "${AZURE_OPENAI_LOCATION=eastus2}" },
         "azureOpenAiApiVersion": { "value": "${AZURE_OPENAI_API_VERSION=2025-04-01-preview}" },
-        "azureOpenAiAnalysisDeployment": { "value": "${AZURE_OPENAI_ANALYSIS_DEPLOYMENT=gpt-5.5}" },
+        "azureOpenAiAnalysisDeployment": { "value": "${AZURE_OPENAI_ANALYSIS_DEPLOYMENT=gpt-5.4}" },
+        "azureOpenAiAnalysisModel": { "value": "${AZURE_OPENAI_ANALYSIS_MODEL=gpt-5.4}" },
+        "azureOpenAiAnalysisModelVersion": { "value": "${AZURE_OPENAI_ANALYSIS_MODEL_VERSION=2026-03-05}" },
+        "azureOpenAiAnalysisSku": { "value": "${AZURE_OPENAI_ANALYSIS_SKU=GlobalStandard}" },
+        "azureOpenAiAnalysisCapacity": { "value": "${AZURE_OPENAI_ANALYSIS_CAPACITY=50}" },
         "azureOpenAiImageDeployment": { "value": "${AZURE_OPENAI_IMAGE_DEPLOYMENT=gpt-image-2}" },
-        "backendApiKey": { "value": "${BACKEND_API_KEY}" }
+        "azureOpenAiImageModel": { "value": "${AZURE_OPENAI_IMAGE_MODEL=gpt-image-2}" },
+        "azureOpenAiImageModelVersion": { "value": "${AZURE_OPENAI_IMAGE_MODEL_VERSION=2026-04-21}" },
+        "azureOpenAiImageSku": { "value": "${AZURE_OPENAI_IMAGE_SKU=GlobalStandard}" },
+        "azureOpenAiImageCapacity": { "value": "${AZURE_OPENAI_IMAGE_CAPACITY=4}" },
+        "backendApiKey": { "value": "${BACKEND_API_KEY=}" }
     }
 }

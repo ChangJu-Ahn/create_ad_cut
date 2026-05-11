@@ -5,6 +5,8 @@
     "containerRegistry": "cr",
     "cosmosDbAccount": "cosmos",
     "logAnalyticsWorkspace": "log",
+    "openAiAccount": "aoai",
     "staticWebApp": "stapp",
-    "storageAccount": "st"
+    "storageAccount": "st",
+    "userAssignedIdentity": "id"
 }
