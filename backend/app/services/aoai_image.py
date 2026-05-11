@@ -88,9 +88,15 @@ def render_image(
     """Generate a single 1024x1024 image and return PNG bytes.
 
     - `use_reference=False`: text-to-image via `images.generate`.
-    - `use_reference=True`: `images.edit`. Fidelity is `low` when
-      `scene_compose=True` (model must redraw scene around the product) and
-      `high` otherwise (front/side/back — preserve product pixels).
+    - `use_reference=True`: `images.edit` with `input_fidelity="low"`.
+
+    Why always `low` for edits: `input_fidelity="high"` instructs the model
+    to keep the reference pixels almost untouched, which dominates the text
+    prompt — the camera angle, background, and "scene rebuild" instructions
+    in front/side/back style headers get ignored, and the model just lightly
+    retouches the original photo. `low` preserves the *product identity*
+    (color, material, logo) via the reference while letting the text prompt
+    win on camera angle, background, and composition.
     """
     settings = get_settings()
     client = _aoai_client()
@@ -111,7 +117,7 @@ def render_image(
             image=image_tuple,
             prompt=final_prompt,
             size="1024x1024",
-            input_fidelity="low" if scene_compose else "high",
+            input_fidelity="low",
         )
 
     payload = result.data[0]

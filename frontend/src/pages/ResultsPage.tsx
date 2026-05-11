@@ -553,17 +553,15 @@ function GroupCard({ group, index, busy, stage, logs, error, onPrev, onNext, onR
                                 />
                                 원본 이미지 첨부 (해제하면 텍스트 프롬프트만으로 생성)
                             </label>
-                            {group.mode === "lookbook" && (
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={sceneCompose}
-                                        onChange={(e) => setSceneCompose(e.target.checked)}
-                                        className="w-3.5 h-3.5"
-                                    />
-                                    장면 재구성 (사람·포즈·배경 합성. 레퍼런스는 "디테일 참고"로만 사용)
-                                </label>
-                            )}
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={sceneCompose}
+                                    onChange={(e) => setSceneCompose(e.target.checked)}
+                                    className="w-3.5 h-3.5"
+                                />
+                                사람 모델 합성 (체크하면 모델이 착용·소지한 장면을 새로 그림)
+                            </label>
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input
                                     type="checkbox"

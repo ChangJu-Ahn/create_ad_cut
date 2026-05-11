@@ -3,7 +3,7 @@
 > 상품 사진 1장 → GPT-5.x 분석 → 사람 검수 → GPT-image-2 로 **기본 4컷 + 커스텀 컷(최대 4개)** 광고 이미지 자동 생성.
 > Azure Container Apps + Azure Static Web Apps + Cosmos DB + Blob Storage 풀스택 OSS.
 
-[English summary →](./README.en.md)   [🏗 IaC 조감도 (azd / Bicep / Terraform / DevOps) →](./README.IaC.md)   [🔬 IaC 완전 정복 (cj edition) →](./README.IaC-cj.md)
+[English summary →](./README.en.md)   [🏗 IaC 조감도 (azd / Bicep / Terraform / DevOps) →](./README.IaC.md)
 
 ![create-ad-cut 결과 화면 — 원본 입력과 룩북·정면·후면·커스텀 컷 비교](docs/images/main.png)
 
@@ -183,7 +183,6 @@ docs/       아키텍처 / API / 프롬프트 설계 / 배포 가이드
 ## 📚 더 읽을 거리
 
 - **[README.IaC.md](README.IaC.md)** — Azure IaC 관점 종합 가이드 (azd / Bicep / Terraform 1:1 비교, 비즈니스 시나리오, GitHub Actions OIDC 예제)
-- **[README.IaC-cj.md](README.IaC-cj.md)** — 솔루션 엔지니어용 IaC 완전 정복 (ARM 멘탈 모델, AWS↔Azure 매핑, drift/state, day-2 운영, gotchas 13개, FAQ)
 - [docs/architecture.md](docs/architecture.md) — 데이터 흐름과 Cosmos 모델
 - [docs/api.md](docs/api.md) — 엔드포인트별 cURL 예시
 - [docs/prompt-design.md](docs/prompt-design.md) — system / user / style_headers 분리 원리
