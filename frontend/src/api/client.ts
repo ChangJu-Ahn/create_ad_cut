@@ -66,11 +66,19 @@ export interface GenerateJobItem {
     error: string | null;
 }
 
+export interface GenerateJobLogEntry {
+    ts: string;
+    tempId: string | null;
+    label: string | null;
+    message: string;
+}
+
 export interface GenerateJobOut {
     sessionId: string;
     jobId: string;
     status: JobStatus;
     items: GenerateJobItem[];
+    logs: GenerateJobLogEntry[];
     createdAt: string;
     updatedAt: string;
 }
@@ -82,6 +90,7 @@ export interface SessionView {
     inputImageUrl: string | null;
     promptMd: string | null;
     generations: GenerationResult[];
+    jobs: GenerateJobOut[];
 }
 
 export function getApiKey(): string {

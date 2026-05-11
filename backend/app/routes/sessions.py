@@ -9,7 +9,14 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth import require_api_key
-from app.schemas import GenerationResult, SessionCreated, SessionView
+from app.schemas import (
+    GenerateJobItem,
+    GenerateJobLogEntry,
+    GenerateJobOut,
+    GenerationResult,
+    SessionCreated,
+    SessionView,
+)
 from app.services import blob, cosmos
 
 router = APIRouter(prefix="/sessions", tags=["sessions"], dependencies=[Depends(require_api_key)])
@@ -52,6 +59,18 @@ def _to_session_view(doc: dict[str, Any]) -> SessionView:
     ]
 
     analysis = doc.get("analysis") or {}
+    jobs = [
+        GenerateJobOut(
+            sessionId=doc["sessionId"],
+            jobId=j["jobId"],
+            status=j["status"],
+            items=[GenerateJobItem(**i) for i in j.get("items", [])],
+            logs=[GenerateJobLogEntry(**e) for e in j.get("logs", [])],
+            createdAt=datetime.fromisoformat(j["createdAt"]),
+            updatedAt=datetime.fromisoformat(j["updatedAt"]),
+        )
+        for j in (doc.get("jobs") or [])
+    ]
     return SessionView(
         sessionId=doc["sessionId"],
         createdAt=datetime.fromisoformat(doc["createdAt"]),
@@ -59,4 +78,5 @@ def _to_session_view(doc: dict[str, Any]) -> SessionView:
         inputImageUrl=input_url,
         promptMd=analysis.get("promptMd"),
         generations=generations,
+        jobs=jobs,
     )

@@ -38,6 +38,7 @@ from app.schemas import (
     GenerateIn,
     GenerateItem,
     GenerateJobItem,
+    GenerateJobLogEntry,
     GenerateJobOut,
 )
 from app.services import aoai_image, blob, cosmos
@@ -53,6 +54,35 @@ _session_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 # Cap how many jobs we keep embedded in the session document so it never
 # approaches Cosmos's 2 MB item limit even after many regenerations.
 _MAX_JOBS_PER_SESSION = 20
+
+# Cap log lines per job so the embedded job record stays small.
+_MAX_LOGS_PER_JOB = 200
+
+
+def _append_job_log(
+    doc: dict[str, Any],
+    job_id: str,
+    message: str,
+    *,
+    temp_id: str | None = None,
+    label: str | None = None,
+) -> None:
+    """Append a single line to the job's in-document log. Trims oldest lines."""
+    for job in doc.get("jobs", []):
+        if job.get("jobId") != job_id:
+            continue
+        logs = job.setdefault("logs", [])
+        logs.append(
+            {
+                "ts": cosmos.now_iso(),
+                "tempId": temp_id,
+                "label": label,
+                "message": message[:500],
+            }
+        )
+        if len(logs) > _MAX_LOGS_PER_JOB:
+            del logs[: len(logs) - _MAX_LOGS_PER_JOB]
+        return
 
 
 def _download_blob(blob_name: str) -> bytes:
@@ -129,6 +159,7 @@ def _job_to_out(session_id: str, job: dict[str, Any]) -> GenerateJobOut:
         jobId=job["jobId"],
         status=job["status"],
         items=[GenerateJobItem(**i) for i in job["items"]],
+        logs=[GenerateJobLogEntry(**entry) for entry in job.get("logs", [])],
         createdAt=datetime.fromisoformat(job["createdAt"]),
         updatedAt=datetime.fromisoformat(job["updatedAt"]),
     )
@@ -145,16 +176,25 @@ async def _render_one_for_job(
 ) -> None:
     """Render one shot end-to-end, then atomically persist the result + job state."""
     lock = _session_locks[session_id]
+    label_for_log = _resolve_label(item)
 
     try:
         async with lock:
             doc = cosmos.get_session(session_id) or {}
             _patch_job_item(doc, job_id, temp_id, status="running")
+            _append_job_log(
+                doc,
+                job_id,
+                f"render 시작 (mode={item.mode}, useReference={item.useReference}, sceneCompose={item.sceneCompose})",
+                temp_id=temp_id,
+                label=label_for_log,
+            )
             cosmos.upsert_session(doc)
 
         gen_id, label, header, use_reference, scene_compose = _resolve_item(item)
         effective_prompt_md = prompt_md if item.includeAnalysisPrompt else ""
 
+        aoai_started = asyncio.get_event_loop().time()
         image_bytes = await asyncio.to_thread(
             aoai_image.render_image,
             effective_prompt_md,
@@ -165,6 +205,8 @@ async def _render_one_for_job(
             "input.png",
             reference_content_type,
         )
+        aoai_secs = asyncio.get_event_loop().time() - aoai_started
+
         blob_name = f"sessions/{session_id}/gen_{gen_id}.png"
         await asyncio.to_thread(blob.upload_bytes, blob_name, image_bytes, "image/png")
 
@@ -184,6 +226,13 @@ async def _render_one_for_job(
             doc = cosmos.get_session(session_id) or {}
             doc.setdefault("generations", []).append(persisted)
             _patch_job_item(doc, job_id, temp_id, status="done", generationId=gen_id)
+            _append_job_log(
+                doc,
+                job_id,
+                f"완료 (AOAI {aoai_secs:.1f}s, {len(image_bytes) // 1024} KB → blob)",
+                temp_id=temp_id,
+                label=label,
+            )
             cosmos.upsert_session(doc)
 
     except Exception as exc:  # noqa: BLE001 — we want every failure recorded
@@ -191,6 +240,13 @@ async def _render_one_for_job(
         async with lock:
             doc = cosmos.get_session(session_id) or {}
             _patch_job_item(doc, job_id, temp_id, status="failed", error=str(exc)[:500])
+            _append_job_log(
+                doc,
+                job_id,
+                f"실패: {str(exc)[:300]}",
+                temp_id=temp_id,
+                label=label_for_log,
+            )
             cosmos.upsert_session(doc)
 
 
@@ -241,6 +297,14 @@ async def generate(session_id: str, body: GenerateIn) -> GenerateJobOut:
                 "error": None,
             }
             for tid, it in items_with_temp
+        ],
+        "logs": [
+            {
+                "ts": now,
+                "tempId": None,
+                "label": None,
+                "message": f"job 생성 ({len(items_with_temp)}개 컷 예약)",
+            }
         ],
     }
 

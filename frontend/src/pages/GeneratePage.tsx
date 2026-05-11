@@ -62,11 +62,25 @@ export default function GeneratePage() {
     const [error, setError] = useState<string | null>(null);
     const [loaded, setLoaded] = useState(false);
     const [job, setJob] = useState<GenerateJobOut | null>(null);
+    const [elapsed, setElapsed] = useState(0);
     const pollTimerRef = useRef<number | null>(null);
 
     useEffect(() => () => {
         if (pollTimerRef.current !== null) window.clearTimeout(pollTimerRef.current);
     }, []);
+
+    useEffect(() => {
+        if (!busy) {
+            setElapsed(0);
+            return;
+        }
+        const startedAt = Date.now();
+        setElapsed(0);
+        const id = window.setInterval(() => {
+            setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+        }, 1000);
+        return () => window.clearInterval(id);
+    }, [busy]);
 
     useEffect(() => {
         listStyleHeaders().then(
@@ -144,7 +158,14 @@ export default function GeneratePage() {
         try {
             const initial = await generate(sessionId, items);
             setJob(initial);
-            await pollUntilDone(initial.jobId);
+            const final = await pollUntilDone(initial.jobId);
+            // 모든 컷이 실패한 경우 결과 페이지에 보여줄 게 없으므로 navigate 하지 않고
+            // 사용자가 백엔드 로그/에러를 그대로 볼 수 있게 페이지에 머무른다.
+            if (final.status === "failed") {
+                const firstErr = final.items.find((i) => i.error)?.error;
+                setError(`모든 컷 생성에 실패했습니다.${firstErr ? `\n첫 에러: ${firstErr}` : ""}`);
+                return;
+            }
             navigate(`/sessions/${sessionId}/results`);
         } catch (err) {
             setError(
@@ -256,6 +277,7 @@ export default function GeneratePage() {
                     <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm space-y-2">
                         <div className="flex items-center gap-3">
                             <Spinner /> {totalCount}개 컷 생성 중… 컷당 일반적으로 1~5분 소요됩니다 (최대 12분까지 대기).
+                            <span className="ml-auto font-mono text-blue-700/80">경과 {formatElapsed(elapsed)}</span>
                         </div>
                         {job && (
                             <ul className="text-xs grid sm:grid-cols-2 gap-1.5 mt-1">
@@ -273,6 +295,22 @@ export default function GeneratePage() {
                                     </li>
                                 ))}
                             </ul>
+                        )}
+                        {job && job.logs && job.logs.length > 0 && (
+                            <details open className="mt-2">
+                                <summary className="cursor-pointer text-[11px] font-medium text-blue-700/80">
+                                    백엔드 로그 ({job.logs.length})
+                                </summary>
+                                <div className="mt-1 max-h-48 overflow-auto rounded-md bg-blue-950/90 text-blue-50 font-mono text-[11px] leading-relaxed p-2">
+                                    {job.logs.map((entry, i) => (
+                                        <div key={`${entry.ts}-${i}`} className="whitespace-pre-wrap">
+                                            <span className="text-blue-300/70">[{new Date(entry.ts).toLocaleTimeString()}]</span>
+                                            {entry.label ? <span className="text-amber-300"> {entry.label}</span> : null}
+                                            <span> {entry.message}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </details>
                         )}
                     </div>
                 )}
@@ -314,6 +352,12 @@ export default function GeneratePage() {
 }
 
 // ---- Subcomponents --------------------------------------------------------
+
+function formatElapsed(totalSeconds: number): string {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
 function Spinner() {
     return (

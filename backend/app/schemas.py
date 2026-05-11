@@ -95,6 +95,13 @@ class GenerateJobItem(BaseModel):
     error: str | None = None
 
 
+class GenerateJobLogEntry(BaseModel):
+    ts: datetime
+    tempId: str | None = None
+    label: str | None = None
+    message: str
+
+
 class GenerateJobOut(BaseModel):
     """Returned by `POST /generate` (202) and `GET /generate/jobs/{jobId}`.
 
@@ -108,6 +115,7 @@ class GenerateJobOut(BaseModel):
     jobId: str
     status: JobStatus
     items: list[GenerateJobItem]
+    logs: list[GenerateJobLogEntry] = Field(default_factory=list)
     createdAt: datetime
     updatedAt: datetime
 
@@ -134,3 +142,4 @@ class SessionView(BaseModel):
     inputImageUrl: str | None = None
     promptMd: str | None = None
     generations: list[GenerationResult] = []
+    jobs: list[GenerateJobOut] = []
