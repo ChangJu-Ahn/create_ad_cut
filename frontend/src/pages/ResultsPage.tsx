@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
     ApiError,
     GenerateItem,
+    GenerateJobLogEntry,
+    GenerateJobOut,
     GenerationResult,
     ShotMode,
     generate,
@@ -48,12 +50,42 @@ export default function ResultsPage() {
     const [slideIndex, setSlideIndex] = useState<Record<string, number>>({});
     const [regenBusy, setRegenBusy] = useState<Record<string, boolean>>({});
     const [regenError, setRegenError] = useState<Record<string, string>>({});
+    const [regenStage, setRegenStage] = useState<Record<string, string>>({});
+    const [regenLogs, setRegenLogs] = useState<Record<string, GenerateJobLogEntry[]>>({});
+    const [dismissedJobId, setDismissedJobId] = useState<string | null>(null);
+    const pollTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         getSession(sessionId).then(setSession, (e) =>
             setError(e instanceof Error ? e.message : String(e))
         );
     }, [sessionId]);
+
+    const latestJob: GenerateJobOut | null = useMemo(() => {
+        if (!session?.jobs?.length) return null;
+        return [...session.jobs].sort(
+            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        )[0];
+    }, [session]);
+
+    // 진행 중인 잡이 있으면 3초마다 세션 전체를 다시 가져온다.
+    // 백엔드가 generations[]에 결과를 append하기 때문에 이미지 카드도 자동으로 늘어남.
+    useEffect(() => {
+        if (pollTimerRef.current !== null) {
+            window.clearTimeout(pollTimerRef.current);
+            pollTimerRef.current = null;
+        }
+        if (!latestJob || latestJob.status !== "running") return;
+        pollTimerRef.current = window.setTimeout(() => {
+            getSession(sessionId).then(setSession, () => {});
+        }, 3000);
+        return () => {
+            if (pollTimerRef.current !== null) {
+                window.clearTimeout(pollTimerRef.current);
+                pollTimerRef.current = null;
+            }
+        };
+    }, [latestJob?.jobId, latestJob?.updatedAt, latestJob?.status, sessionId]);
 
     const groups = useMemo(() => (session ? groupGenerations(session.generations) : []), [session]);
 
@@ -88,6 +120,8 @@ export default function ResultsPage() {
             ...(group.mode === "custom" ? { label: group.label } : {}),
         };
         setRegenBusy((p) => ({ ...p, [group.key]: true }));
+        setRegenStage((p) => ({ ...p, [group.key]: "queued" }));
+        setRegenLogs((p) => ({ ...p, [group.key]: [] }));
         setRegenError((p) => {
             const { [group.key]: _omit, ...rest } = p;
             return rest;
@@ -96,6 +130,8 @@ export default function ResultsPage() {
             // 202 + jobId 로 즉시 끊고, 완료될 때까지 폴링.
             // gpt-image-2 호출은 1~5분이므로 이 패턴이 동기 요청보다 안전함.
             const initial = await generate(sessionId, [item]);
+            setRegenStage((p) => ({ ...p, [group.key]: initial.items[0]?.status ?? "pending" }));
+            setRegenLogs((p) => ({ ...p, [group.key]: initial.logs ?? [] }));
             const start = Date.now();
             const maxMs = 12 * 60 * 1000;
             // eslint-disable-next-line no-constant-condition
@@ -105,6 +141,8 @@ export default function ResultsPage() {
                 }
                 await new Promise<void>((r) => setTimeout(r, 3000));
                 const cur = await getGenerateJob(sessionId, initial.jobId);
+                setRegenStage((p) => ({ ...p, [group.key]: cur.items[0]?.status ?? cur.status }));
+                setRegenLogs((p) => ({ ...p, [group.key]: cur.logs ?? [] }));
                 if (cur.status !== "running") {
                     if (cur.items.some((i) => i.status === "failed")) {
                         const msg = cur.items.find((i) => i.status === "failed")?.error ?? "재생성 실패";
@@ -125,6 +163,10 @@ export default function ResultsPage() {
             setRegenError((p) => ({ ...p, [group.key]: msg }));
         } finally {
             setRegenBusy((p) => ({ ...p, [group.key]: false }));
+            setRegenStage((p) => {
+                const { [group.key]: _omit, ...rest } = p;
+                return rest;
+            });
         }
     }
 
@@ -164,6 +206,17 @@ export default function ResultsPage() {
                     </button>
                 </div>
             </div>
+
+            {latestJob && latestJob.jobId !== dismissedJobId && (
+                <JobBanner
+                    job={latestJob}
+                    onDismiss={
+                        latestJob.status === "running"
+                            ? undefined
+                            : () => setDismissedJobId(latestJob.jobId)
+                    }
+                />
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
                 {/* Input column — sticky on large screens */}
@@ -215,6 +268,8 @@ export default function ResultsPage() {
                                 group={g}
                                 index={slideIndex[g.key] ?? 0}
                                 busy={!!regenBusy[g.key]}
+                                stage={regenStage[g.key]}
+                                logs={regenLogs[g.key]}
                                 error={regenError[g.key]}
                                 onPrev={() =>
                                     setSlideIndex((p) => ({
@@ -244,6 +299,12 @@ export default function ResultsPage() {
 
 // ---- Subcomponents -------------------------------------------------------
 
+function formatElapsed(totalSeconds: number): string {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 function Spinner() {
     return (
         <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
@@ -253,10 +314,92 @@ function Spinner() {
     );
 }
 
+interface JobBannerProps {
+    job: GenerateJobOut;
+    onDismiss?: () => void;
+}
+
+function JobBanner({ job, onDismiss }: JobBannerProps) {
+    const isRunning = job.status === "running";
+    const isFailed = job.status === "failed";
+    const isPartial = job.status === "partial";
+    const tone = isRunning
+        ? "bg-blue-50 border-blue-200 text-blue-800"
+        : isFailed
+          ? "bg-red-50 border-red-200 text-red-800"
+          : isPartial
+            ? "bg-amber-50 border-amber-200 text-amber-900"
+            : "bg-emerald-50 border-emerald-200 text-emerald-900";
+    const doneCount = job.items.filter((i) => i.status === "done").length;
+    const failedCount = job.items.filter((i) => i.status === "failed").length;
+    const totalCount = job.items.length;
+    const headline = isRunning
+        ? `${totalCount}개 컷 생성 중… (${doneCount}/${totalCount} 완료, 컷당 1~5분 소요)`
+        : isFailed
+          ? `생성 실패 — ${failedCount}/${totalCount}개 컷이 모두 실패했습니다.`
+          : isPartial
+            ? `부분 완료 — ${doneCount}/${totalCount}개 성공, ${failedCount}개 실패.`
+            : `생성 완료 — ${doneCount}/${totalCount}개 컷.`;
+    return (
+        <div className={`mb-4 p-4 rounded-xl border text-sm space-y-2 ${tone}`}>
+            <div className="flex items-center gap-3">
+                {isRunning && <Spinner />}
+                <span className="font-medium">{headline}</span>
+                {onDismiss && (
+                    <button
+                        type="button"
+                        onClick={onDismiss}
+                        className="ml-auto text-xs underline opacity-70 hover:opacity-100"
+                    >
+                        닫기
+                    </button>
+                )}
+            </div>
+            <ul className="text-xs grid sm:grid-cols-2 gap-1.5 mt-1">
+                {job.items.map((it) => (
+                    <li key={it.tempId} className="flex items-center gap-2">
+                        <span className="inline-flex w-4 h-4 items-center justify-center">
+                            {it.status === "done" && <span className="text-green-600">✓</span>}
+                            {it.status === "failed" && <span className="text-red-600">✕</span>}
+                            {it.status === "running" && <Spinner />}
+                            {it.status === "pending" && <span className="opacity-60">·</span>}
+                        </span>
+                        <span className="font-medium">{it.label}</span>
+                        <span className="opacity-70">({it.status})</span>
+                        {it.error && (
+                            <span className="text-red-600 truncate max-w-[20rem]" title={it.error}>
+                                {it.error}
+                            </span>
+                        )}
+                    </li>
+                ))}
+            </ul>
+            {job.logs && job.logs.length > 0 && (
+                <details className="mt-2" open={isFailed}>
+                    <summary className="cursor-pointer text-[11px] font-medium opacity-80">
+                        백엔드 로그 ({job.logs.length})
+                    </summary>
+                    <div className="mt-1 max-h-48 overflow-auto rounded-md bg-slate-900 text-slate-100 font-mono text-[11px] leading-relaxed p-2">
+                        {job.logs.map((entry, i) => (
+                            <div key={`${entry.ts}-${i}`} className="whitespace-pre-wrap">
+                                <span className="text-slate-400">[{new Date(entry.ts).toLocaleTimeString()}]</span>
+                                {entry.label ? <span className="text-amber-300"> {entry.label}</span> : null}
+                                <span> {entry.message}</span>
+                            </div>
+                        ))}
+                    </div>
+                </details>
+            )}
+        </div>
+    );
+}
+
 interface GroupCardProps {
     group: Group;
     index: number;
     busy: boolean;
+    stage?: string;
+    logs?: GenerateJobLogEntry[];
     error?: string;
     onPrev: () => void;
     onNext: () => void;
@@ -268,7 +411,7 @@ interface GroupCardProps {
     ) => void;
 }
 
-function GroupCard({ group, index, busy, error, onPrev, onNext, onRegenerate }: GroupCardProps) {
+function GroupCard({ group, index, busy, stage, logs, error, onPrev, onNext, onRegenerate }: GroupCardProps) {
     const safeIndex = Math.min(Math.max(index, 0), group.items.length - 1);
     const current = group.items[safeIndex];
     const total = group.items.length;
@@ -277,11 +420,26 @@ function GroupCard({ group, index, busy, error, onPrev, onNext, onRegenerate }: 
     const [useReference, setUseReference] = useState<boolean>(true);
     const [sceneCompose, setSceneCompose] = useState<boolean>(group.mode === "lookbook");
     const [includeAnalysisPrompt, setIncludeAnalysisPrompt] = useState<boolean>(true);
+    const [elapsed, setElapsed] = useState<number>(0);
 
     // Reset draft when the visible image changes (slide or new regeneration).
     useEffect(() => {
         setDraftHeader(current.promptHeader);
     }, [current.id]);
+
+    // Tick an elapsed counter while the regenerate request is in flight so the user can see progress.
+    useEffect(() => {
+        if (!busy) {
+            setElapsed(0);
+            return;
+        }
+        const startedAt = Date.now();
+        setElapsed(0);
+        const id = window.setInterval(() => {
+            setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+        }, 1000);
+        return () => window.clearInterval(id);
+    }, [busy]);
 
     return (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
@@ -294,6 +452,15 @@ function GroupCard({ group, index, busy, error, onPrev, onNext, onRegenerate }: 
                         className="w-full h-full object-cover transition-opacity duration-300"
                     />
                 </div>
+                {busy && (
+                    <div className="absolute inset-0 bg-black/55 flex flex-col items-center justify-center gap-2 text-white">
+                        <Spinner />
+                        <div className="text-sm font-medium">재생성 중…</div>
+                        <div className="font-mono text-xs opacity-80">경과 {formatElapsed(elapsed)}</div>
+                        <div className="text-[11px] opacity-80">백엔드 상태: <span className="font-mono">{stage ?? "connecting"}</span></div>
+                        <div className="text-[11px] opacity-70">일반적으로 1~5분 소요</div>
+                    </div>
+                )}
                 {total > 1 && (
                     <>
                         <button
@@ -386,15 +553,17 @@ function GroupCard({ group, index, busy, error, onPrev, onNext, onRegenerate }: 
                                 />
                                 원본 이미지 첨부 (해제하면 텍스트 프롬프트만으로 생성)
                             </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={sceneCompose}
-                                    onChange={(e) => setSceneCompose(e.target.checked)}
-                                    className="w-3.5 h-3.5"
-                                />
-                                장면 재구성 (사람·포즈·배경 합성. 레퍼런스는 "디테일 참고"로만 사용)
-                            </label>
+                            {group.mode === "lookbook" && (
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={sceneCompose}
+                                        onChange={(e) => setSceneCompose(e.target.checked)}
+                                        className="w-3.5 h-3.5"
+                                    />
+                                    장면 재구성 (사람·포즈·배경 합성. 레퍼런스는 "디테일 참고"로만 사용)
+                                </label>
+                            )}
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input
                                     type="checkbox"
@@ -425,7 +594,7 @@ function GroupCard({ group, index, busy, error, onPrev, onNext, onRegenerate }: 
                                 {busy ? (
                                     <>
                                         <Spinner />
-                                        재생성 중…
+                                        재생성 중… {formatElapsed(elapsed)}
                                     </>
                                 ) : (
                                     "재생성하기"
@@ -440,6 +609,22 @@ function GroupCard({ group, index, busy, error, onPrev, onNext, onRegenerate }: 
                         <p className="text-[11px] text-slate-400">
                             재생성 결과는 기존 이미지 다음으로 추가됩니다. 좌우 화살표로 비교할 수 있어요.
                         </p>
+                        {(busy || error) && logs && logs.length > 0 && (
+                            <details open className="mt-1">
+                                <summary className="cursor-pointer text-[11px] font-medium text-slate-500">
+                                    백엔드 로그 ({logs.length})
+                                </summary>
+                                <div className="mt-1 max-h-40 overflow-auto rounded-md bg-slate-900 text-slate-100 font-mono text-[11px] leading-relaxed p-2">
+                                    {logs.map((entry, i) => (
+                                        <div key={`${entry.ts}-${i}`} className="whitespace-pre-wrap">
+                                            <span className="text-slate-400">[{new Date(entry.ts).toLocaleTimeString()}]</span>
+                                            {entry.label ? <span className="text-amber-300"> {entry.label}</span> : null}
+                                            <span> {entry.message}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </details>
+                        )}
                     </div>
                 )}
             </div>
