@@ -12,6 +12,7 @@ import io
 from functools import lru_cache
 from pathlib import Path
 
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AzureOpenAI
 from PIL import Image
 
@@ -23,8 +24,12 @@ _PROMPT_DIR = Path(__file__).resolve().parent.parent / "prompts"
 @lru_cache(maxsize=1)
 def _aoai_client() -> AzureOpenAI:
     settings = get_settings()
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default",
+    )
     return AzureOpenAI(
-        api_key=settings.azure_openai_api_key,
+        azure_ad_token_provider=token_provider,
         api_version=settings.azure_openai_api_version,
         azure_endpoint=settings.azure_openai_endpoint,
     )

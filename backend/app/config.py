@@ -28,14 +28,13 @@ class Settings(BaseSettings):
     # API security
     backend_api_key: str = Field(..., alias="BACKEND_API_KEY")
 
-    # Azure OpenAI (API-key auth)
+    # Azure OpenAI (AAD auth via DefaultAzureCredential)
     azure_openai_endpoint: str = Field(..., alias="AZURE_OPENAI_ENDPOINT")
-    azure_openai_api_key: str = Field(..., alias="AZURE_OPENAI_API_KEY")
     azure_openai_api_version: str = Field(
         "2025-04-01-preview", alias="AZURE_OPENAI_API_VERSION"
     )
     azure_openai_analysis_deployment: str = Field(
-        "gpt-5.5", alias="AZURE_OPENAI_ANALYSIS_DEPLOYMENT"
+        "gpt-5.4", alias="AZURE_OPENAI_ANALYSIS_DEPLOYMENT"
     )
     azure_openai_image_deployment: str = Field(
         "gpt-image-2", alias="AZURE_OPENAI_IMAGE_DEPLOYMENT"

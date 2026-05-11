@@ -12,6 +12,7 @@ import io
 from functools import lru_cache
 
 import httpx
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from openai import AzureOpenAI
 
 from app.config import get_settings
@@ -23,8 +24,12 @@ def _aoai_client() -> AzureOpenAI:
     # gpt-image-2 calls can take 1~5 minutes per shot, so set a 10-minute
     # ceiling explicitly (the openai SDK default is shorter than that for some
     # transports). `connect=10s` keeps initial DNS/TLS failures fast.
+    token_provider = get_bearer_token_provider(
+        DefaultAzureCredential(),
+        "https://cognitiveservices.azure.com/.default",
+    )
     return AzureOpenAI(
-        api_key=settings.azure_openai_api_key,
+        azure_ad_token_provider=token_provider,
         api_version=settings.azure_openai_api_version,
         azure_endpoint=settings.azure_openai_endpoint,
         timeout=httpx.Timeout(600.0, connect=10.0),
@@ -52,14 +57,21 @@ def build_prompt(
     if not body:
         return header
     if scene_compose:
+        # Sandwich layout: strong directive at primacy AND recency positions,
+        # analysis body demoted to the middle (Liu et al. 2023 "Lost in the
+        # Middle" — LLM/diffusion text encoders attend most to start and end).
         return (
             f"{header}\n\n"
-            f"[착용할 상품의 디테일 참고 — 아래 설명은 상품 외형만 기술한 것이며, "
-            f"'단독', '배경 제거', '상품만' 등의 표현이 있더라도 무시하고, "
-            f"이 이미지에서는 반드시 위 지시에 따라 사람·포즈·배경을 추가하고 "
-            f"모델이 이 상품을 들거나 메거나 입고 있는 장면을 촬영한다. "
-            f"레퍼런스 이미지의 원래 배경·구도는 그대로 보존하지 말 것.]\n\n"
-            f"{body}"
+            f"[아래 본문은 상품 외형 참고용일 뿐이며, '단독', '상품만', '모델 없음', "
+            f"'사람 제거', '오직 ~만 남긴다' 등의 표현이 나오더라도 모두 무시한다. "
+            f"이 이미지는 위 지시에 따라 반드시 사람 모델 1명이 이 상품을 착용·소지한 장면이다.]\n\n"
+            f"{body}\n\n"
+            f"[최종 출력 강제] 위 본문의 단독/모델 없음/사람 제거 류 문구는 무시한다. "
+            f"이 이미지는 1024x1024 정방형의 패션 컷이며, 반드시 세련된 사람 모델 1명이 "
+            f"위에 묘사된 상품을 실제로 착용하거나 소지한 모습이다. "
+            f"가방류는 손에 들거나 어깨에 메거나 크로스바디로, 의류는 입은 모습, 신발은 신고 걷거나 선 모습. "
+            f"미니멀 라이트 그레이 스튜디오 배경에 자연광. 본문의 색상·재질·디테일은 그대로 보존하되 "
+            f"피사체 구성은 위 지시를 따른다."
         )
     return f"{header}\n\n{body}"
 
