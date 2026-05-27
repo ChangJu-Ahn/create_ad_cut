@@ -12,9 +12,25 @@ mkdirSync(SCREENSHOT_DIR, { recursive: true });
 // same workflow exercises both.
 
 test("platform reachable + board scenario when present", async ({ page }) => {
-    // 1) Landing page screenshot — always runs.
+    // Surface SPA console errors so a blank white screen fails the test
+    // instead of passing on a 200 HTML response.
+    const consoleErrors: string[] = [];
+    page.on("console", (msg) => {
+        if (msg.type() === "error") consoleErrors.push(msg.text());
+    });
+    page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+
+    // 1) Landing page — must render the app shell, not just return 200.
     const resp = await page.goto("/", { waitUntil: "networkidle" });
     expect(resp?.ok(), `landing page returned ${resp?.status()}`).toBeTruthy();
+
+    // The React app always renders the brand link in the top bar. If this
+    // is not visible, the SPA failed to mount (blank white screen).
+    await expect(
+        page.getByRole("link", { name: /create-ad-cut/i }),
+        `app shell did not render. console errors: ${consoleErrors.join(" | ") || "(none)"}`
+    ).toBeVisible({ timeout: 10_000 });
+
     await page.screenshot({ path: join(SCREENSHOT_DIR, "01-landing.png"), fullPage: true });
 
     // 2) Board scenario — only if the page is shipped with data-testid hooks.

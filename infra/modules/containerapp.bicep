@@ -104,10 +104,11 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
                         { name: 'COSMOS_DATABASE_NAME', value: cosmosDatabaseName }
                         { name: 'COSMOS_CONTAINER_NAME', value: cosmosContainerName }
                         { name: 'CORS_ORIGINS', value: corsOrigins }
-                        // Matches any Static Web App host (prod + per-PR staging)
-                        // so PR-preview frontends can call this backend directly
-                        // via VITE_API_BASE_URL without per-PR redeploy.
-                        { name: 'CORS_ORIGIN_REGEX', value: 'https://[a-z0-9-]+\\.[0-9]+\\.azurestaticapps\\.net|https://[a-z0-9-]+\\.azurestaticapps\\.net' }
+                        // Matches any Static Web App host (prod + per-PR staging).
+                        // SWA staging hosts look like `<name>.<region>.<n>.azurestaticapps.net`
+                        // (e.g. gray-dune-0aa6b2d0f-6.eastus2.7.azurestaticapps.net),
+                        // so the regex must accept dots inside the prefix.
+                        { name: 'CORS_ORIGIN_REGEX', value: 'https://[a-z0-9.-]+\\.azurestaticapps\\.net' }
                         { name: 'LOG_LEVEL', value: 'INFO' }
                     ]
                     probes: isBootstrapPlaceholderImage

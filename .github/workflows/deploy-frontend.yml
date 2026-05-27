@@ -110,8 +110,12 @@ jobs:
           # `upload` on open/sync/push, `close` on PR close so SWA tears down
           # the per-PR staging environment automatically.
           action: ${{ github.event.action == 'closed' && 'close' || 'upload' }}
-          app_location: "/frontend"
-          output_location: "dist"
+          # Upload the already-built `dist/` directly. Earlier this used
+          # app_location: "/frontend" + output_location: "dist" + skip_app_build,
+          # which caused SWA to serve the source tree (index.html still pointing
+          # at /src/main.tsx) -> blank white screen. Pointing app_location at
+          # the dist folder is the reliable pattern for pre-built SPAs.
+          app_location: "frontend/dist"
           skip_app_build: true
           skip_deploy_on_missing_secrets: true
 
