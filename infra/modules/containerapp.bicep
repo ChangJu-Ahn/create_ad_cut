@@ -60,12 +60,14 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     properties: {
         managedEnvironmentId: environmentId
         configuration: {
-            // Single-revision mode: production traffic always lands on the most
-            // recent revision created by CI. Backend PR previews build and push
-            // the image to ACR (lightweight gate) but do NOT create an ACA
-            // revision — EasyAuth/SWA Linked Backend makes label-based preview
-            // URLs unreachable to reviewers anyway, so we avoid that complexity.
-            activeRevisionsMode: 'Single'
+            // Multiple-revision mode lets each PR coexist as its own revision
+            // (pr-<N>-<sha>) at 0% traffic, so Playwright + human reviewers can
+            // hit a live URL before merge. The main-push deploy workflow pins
+            // 100% traffic to its newly created `main-<sha>` revision and
+            // deactivates older `main-*` revisions; PR cleanup deactivates
+            // `pr-<N>-*` on PR close. Never set latestRevision:true — always
+            // pin by explicit revision name to keep PR/prod traffic isolated.
+            activeRevisionsMode: 'Multiple'
             ingress: {
                 external: true
                 targetPort: ingressTargetPort
@@ -102,6 +104,11 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
                         { name: 'COSMOS_DATABASE_NAME', value: cosmosDatabaseName }
                         { name: 'COSMOS_CONTAINER_NAME', value: cosmosContainerName }
                         { name: 'CORS_ORIGINS', value: corsOrigins }
+                        // Matches any Static Web App host (prod + per-PR staging).
+                        // SWA staging hosts look like `<name>.<region>.<n>.azurestaticapps.net`
+                        // (e.g. gray-dune-0aa6b2d0f-6.eastus2.7.azurestaticapps.net),
+                        // so the regex must accept dots inside the prefix.
+                        { name: 'CORS_ORIGIN_REGEX', value: 'https://[a-z0-9.-]+\\.azurestaticapps\\.net' }
                         { name: 'LOG_LEVEL', value: 'INFO' }
                     ]
                     probes: isBootstrapPlaceholderImage

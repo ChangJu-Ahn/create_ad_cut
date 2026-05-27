@@ -58,23 +58,46 @@ jobs:
           docker build -t "$IMAGE" -f backend/Dockerfile backend
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
 
-      - name: Update Container App revision
+      - name: Create new revision and pin 100% traffic
         run: |
-          # Single-revision mode: az containerapp update creates a new revision
-          # and immediately routes 100% traffic to it. Previous revision is
-          # automatically deactivated.
+          # Multiple-revision mode: az containerapp update creates a new
+          # revision but does NOT shift traffic. We then pin 100% by exact
+          # revision name (never latestRevision:true — that would also route
+          # PR preview revisions to prod). Older `main-*` revisions are
+          # deactivated; `pr-*` revisions are left alone (cleanup-pr-preview
+          # handles those).
+          REV_SUFFIX="main-${SHORT_SHA}"
+          NEW_REVISION="${ACA_NAME}--${REV_SUFFIX}"
+
           az containerapp update \
             -g "$AZURE_RG" \
             -n "$ACA_NAME" \
-            --image "$IMAGE"
-          # Ensure ingress target port matches the FastAPI listener (8000),
-          # in case the previous revision was still on the bootstrap port (80).
+            --image "$IMAGE" \
+            --revision-suffix "$REV_SUFFIX"
+
+          # Ensure ingress target port matches the FastAPI listener (8000).
           az containerapp ingress update \
             -g "$AZURE_RG" \
             -n "$ACA_NAME" \
             --type external \
             --target-port 8000
+
+          az containerapp ingress traffic set \
+            -g "$AZURE_RG" \
+            -n "$ACA_NAME" \
+            --revision-weight "${NEW_REVISION}=100"
+
+          # Deactivate older `--main-` revisions (not the new one, not pr-*).
+          az containerapp revision list \
+            -g "$AZURE_RG" -n "$ACA_NAME" \
+            --query "[?properties.active && name != '${NEW_REVISION}' && contains(name, '--main-')].name" \
+            -o tsv | while read -r rev; do
+              [ -z "$rev" ] && continue
+              echo "Deactivating old main revision: $rev"
+              az containerapp revision deactivate -g "$AZURE_RG" -n "$ACA_NAME" --revision "$rev" || true
+            done
 
       - name: Show app URL
         run: |

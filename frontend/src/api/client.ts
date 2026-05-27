@@ -4,9 +4,16 @@
  * In production the SWA Linked Backend mounts the backend under `/api`, so
  * we always call relative `/api/...` URLs. Locally Vite proxies `/api/*` to
  * `http://localhost:8000` and strips the prefix.
+ *
+ * PR previews override this with VITE_API_BASE_URL at build time, pointing
+ * the frontend at the per-PR ACA revision FQDN so reviewers and Playwright
+ * exercise the PR's backend before merge.
  */
 
 const API_KEY_STORAGE = "create-ad-cut.apiKey";
+
+// Absolute URL (with trailing path) when overridden, otherwise relative `/api`.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api";
 
 export type BuiltInMode = "lookbook" | "front" | "side" | "back";
 export type ShotMode = BuiltInMode | "custom";
@@ -108,7 +115,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
         headers.set("Content-Type", "application/json");
     }
 
-    const res = await fetch(`/api${path}`, { ...init, headers });
+    const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
 
     if (!res.ok) {
         let detail: unknown = null;
