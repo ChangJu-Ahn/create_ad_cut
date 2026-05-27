@@ -60,23 +60,17 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     properties: {
         managedEnvironmentId: environmentId
         configuration: {
-            // Multiple-revision mode enables per-PR preview environments:
-            // CI creates a new revision with a `pr-N` label so reviewers get
-            // a stable URL `<app>--pr-N.<env-domain>`, while production
-            // traffic stays pinned to the latest main revision via the
-            // `latestRevision` traffic rule below.
-            activeRevisionsMode: 'Multiple'
+            // Single-revision mode: production traffic always lands on the most
+            // recent revision created by CI. Backend PR previews build and push
+            // the image to ACR (lightweight gate) but do NOT create an ACA
+            // revision — EasyAuth/SWA Linked Backend makes label-based preview
+            // URLs unreachable to reviewers anyway, so we avoid that complexity.
+            activeRevisionsMode: 'Single'
             ingress: {
                 external: true
                 targetPort: ingressTargetPort
                 transport: 'auto'
                 allowInsecure: false
-                traffic: [
-                    {
-                        latestRevision: true
-                        weight: 100
-                    }
-                ]
             }
             registries: [
                 {
