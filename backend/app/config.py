@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # App
     log_level: str = Field("INFO", alias="LOG_LEVEL")
     cors_origins: str = Field("http://localhost:5173", alias="CORS_ORIGINS")
+    # Regex matched against the request Origin in addition to cors_origins.
+    # Used for SWA per-PR staging hosts (`<swa>-<N>.<region>.azurestaticapps.net`)
+    # which are not knowable at deploy time.
+    cors_origin_regex: str = Field("", alias="CORS_ORIGIN_REGEX")
 
     @property
     def cors_origin_list(self) -> list[str]:

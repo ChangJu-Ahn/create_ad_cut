@@ -22,11 +22,12 @@ app = FastAPI(
     ),
 )
 
-# CORS — only meaningful for local dev. In production the SWA Linked Backend
-# proxy makes the call same-origin.
+# CORS — local dev uses cors_origins; PR previews on SWA staging use
+# cors_origin_regex so any per-PR hostname matches without redeploy.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
