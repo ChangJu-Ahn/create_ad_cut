@@ -17,9 +17,26 @@ env:
   PR_NUMBER: ${{ github.event.pull_request.number }}
 
 jobs:
-  cleanup:
+  preflight:
     runs-on: ubuntu-latest
-    if: ${{ secrets.AZURE_CREDENTIALS != '' && vars.AZURE_RG != '' && vars.ACA_NAME != '' }}
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          HAS_CREDS: ${{ secrets.AZURE_CREDENTIALS != '' }}
+        run: |
+          if [ "$HAS_CREDS" = "true" ] && [ -n "$AZURE_RG" ] && [ -n "$ACA_NAME" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::Skipping cleanup — Azure secrets/variables not configured."
+            echo "ready=false" >> $GITHUB_OUTPUT
+          fi
+
+  cleanup:
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
+    runs-on: ubuntu-latest
     steps:
       - uses: azure/login@v2
         with:

@@ -5,7 +5,7 @@
 SHELL := /usr/bin/env bash
 .ONESHELL:
 
-.PHONY: help bootstrap dev backend frontend test lint rbac protect clean
+.PHONY: help bootstrap dev backend frontend test lint rbac protect secrets clean
 
 help:
 	@echo "Targets:"
@@ -16,6 +16,7 @@ help:
 	@echo "  make frontend    — frontend only (vite)"
 	@echo "  make test        — pytest + tsc"
 	@echo "  make lint        — ruff + tsc"
+	@echo "  make secrets     — create SP + push GitHub Secrets/Variables"
 	@echo "  make protect     — apply branch protection to main (gh CLI)"
 	@echo "  make clean       — remove .venv, node_modules, .env"
 
@@ -27,6 +28,9 @@ rbac:
 
 protect:
 	@bash scripts/setup-branch-protection.sh
+
+secrets:
+	@bash scripts/setup-github-secrets.sh
 
 backend:
 	@cd backend && \
