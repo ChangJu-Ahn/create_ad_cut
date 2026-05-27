@@ -6,9 +6,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
-from app.auth import require_api_key
 from app.schemas import (
     GenerateJobItem,
     GenerateJobLogEntry,
@@ -19,7 +18,7 @@ from app.schemas import (
 )
 from app.services import blob, cosmos
 
-router = APIRouter(prefix="/sessions", tags=["sessions"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.post("", response_model=SessionCreated, status_code=status.HTTP_201_CREATED)

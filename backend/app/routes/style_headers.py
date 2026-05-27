@@ -6,13 +6,12 @@ default style header in an editable textarea.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
-from app.auth import require_api_key
 from app.prompts.style_headers import MODE_META, STYLE_HEADERS
 from app.schemas import StyleHeaderInfo
 
-router = APIRouter(tags=["style-headers"], dependencies=[Depends(require_api_key)])
+router = APIRouter(tags=["style-headers"])
 
 
 @router.get("/style-headers", response_model=list[StyleHeaderInfo])
