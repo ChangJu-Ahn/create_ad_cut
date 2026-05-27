@@ -34,8 +34,13 @@ MODE_META: dict[BuiltInMode, dict[str, object]] = {
     },
     "front": {
         "label": "정면 스튜디오",
-        "description": "흰 배경 단독 정면 컷",
-        "useReference": True,
+        "description": "흰 배경 단독 정면 컷 (toe-cap head-on)",
+        # gpt-image-2 의 `images.edit` 는 input_fidelity='low' 여도 reference image
+        # 의 기하학적 시점을 강하게 유지한다. 신발의 0° head-on toe-cap 같이 학습
+        # 분포에서 드문 시점은 reference 가 있으면 측면으로 떨어진다. 그래서
+        # FRONT 만 text-only `images.generate` 로 보내고 product descriptor 만 으로
+        # 정체성을 보존한다.
+        "useReference": False,
         "sceneCompose": False,
     },
     "side": {
@@ -78,21 +83,25 @@ STYLE_HEADERS: dict[BuiltInMode, str] = {
     # 원하는 분포를 직접 명시 (Saharia+ 2022 Imagen, Ruiz+ 2023 DreamBooth).
     # ──────────────────────────────────────────────────────────────────
     "front": (
-        "Studio packshot — e-commerce hero shot, 0° front elevation of one isolated product. "
+        "Studio packshot — strict head-on orthographic front elevation (0°) of one isolated product. "
+        "이 컷은 절대 e-commerce 'hero 3/4 shot' 이 아니다. 기술 도면의 정면 입면도(front elevation drawing)의 사진 버전으로 생각하라. "
         "1024×1024 정방형, seamless 순백 #FFFFFF 배경 (white cyc). "
-        "카메라: 광축이 상품 정면에 수직, 85mm-equivalent 렌즈, 원근 왜곡 최소, 좌우 완전 대칭. "
-        "피사체: reference image 의 상품 1개가 프레임 정중앙에 단독으로 놓여 있다 "
-        "(상품이 frame 높이의 약 70% 차지). "
-        "[가방류] 본체 정면이 카메라를 마주보며 자체적으로 곧게 서 있다. "
-        "핸들/스트랩은 본체 위에 자연스럽게 정돈된 상태. "
-        "[의류] Ghost mannequin (invisible mannequin) 위에 형태가 잡혀 있으며 좌우 대칭 정면. "
-        "[신발] 한 켤레가 토캡(앞코)을 카메라 정면으로 향한 채 floor 에 놓여 있고 발등 라인이 보인다. "
-        "조명: 대형 softbox 정면 key + 양옆 약한 fill, exposure ETTR, 중성 화이트 밸런스. "
-        "그림자: 피사체 바로 아래에 부드러운 contact shadow 한 줄. "
-        "스타일: clean magazine-grade product photography. "
-        "Reference image 의 상품 정체성(형태·색상·재질·로고·비율)을 그대로 보존하며, "
-        "아래 product descriptor 는 그 상품의 외형 정의로 사용한다. "
-        "카메라 시점·배경·조명·구도는 위 spec 을 따른다."
+        "카메라: 광축이 상품 정면에 정확히 수직 (yaw=0°, pitch=0°, roll=0°). "
+        "카메라 높이는 상품 중심과 같은 높이 — 위에서 내려다보거나(top-down, bird's eye) 아래에서 올려다보지 않는다. "
+        "85mm-equivalent 렌즈, telephoto-flat 원근, 좌우 완전 대칭. "
+        "피사체: 아래 product descriptor 가 정의하는 상품 1개가 프레임 정중앙에 단독으로 놓여 있다 (frame 높이의 약 70% 차지). "
+        "[가방류] 본체의 앞면 패널이 카메라를 정면으로 마주보고 자체적으로 곧게 서 있다. "
+        "측면 거싯이나 옆구리가 보이면 안 된다. 핸들/스트랩은 본체 위에 좌우 대칭으로 정돈. "
+        "[의류] Ghost mannequin (invisible mannequin) 위에 형태가 잡혀 있고, 어깨선·앞 여밈·로고가 좌우 완전 대칭으로 카메라를 마주본다. "
+        "옆 봉제선이나 옆구리 핏이 드러나면 안 된다. "
+        "[신발 — 핵심] 카메라가 신발 한 짝의 토캡(앞코)을 정면으로 응시하는 toe-cap-on perspective. "
+        "신발은 바닥에 놓여 있고 토코가 카메라를 향한다. 카메라는 바닥에서 약간 높은 신발 중심 높이, 신발 앞코를 정면으로 응시. "
+        "보이는 부위: 토박스 앞면 전체, 슈레이스 양쪽 열이 좌우 평행하게 정대칭, 텅(tongue) 정면, 발등 라인, 아웃솔 앞코 끝 모서리만 얇은 수준으로 살짝. "
+        "보이지 않는 부위: 신발의 측면 갑피 전체, 사이드 아웃솔 측벽, 힐 컵 전체 (힐은 토캡 뒤로 완전히 가려짐). "
+        "한 짝만 단독 배치 (한 켤레 두 짝이 아니라 1짝). "
+        "조명: 대형 softbox 정면 key + 양옆 약한 fill, exposure ETTR, 중성 화이트 밸런스. 그림자: 피사체 바로 아래 부드러운 contact shadow 한 줄. "
+        "스타일: clean magazine-grade product photography, technical e-commerce front elevation. "
+        "⚠️ 재차 확인하자면 — 이 컷은 'product photo from the side'가 아니다. 카메라는 신발 앞코 정면을 보고 있다. 측면이나 3/4 각도가 보이면 출력 실패이다."
     ),
     # ──────────────────────────────────────────────────────────────────
     # Side — studio packshot, 90° profile elevation.

@@ -1,15 +1,52 @@
 name: deploy-frontend
 
+# Frontend deployments to Azure Static Web Apps.
+# - `push` to main → production environment
+# - `pull_request` (open/sync/close) → SWA's built-in per-PR staging env
+#   (Azure/static-web-apps-deploy handles this automatically when the action
+#   runs on pull_request events).
+
 on:
   push:
     branches: [main]
     paths:
       - "frontend/**"
       - ".github/workflows/deploy-frontend.yml"
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: deploy-frontend-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          HAS_TOKEN: ${{ secrets.SWA_DEPLOYMENT_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::Skipping deploy-frontend — SWA_DEPLOYMENT_TOKEN secret is not configured. See docs/deployment.md."
+            echo "ready=false" >> $GITHUB_OUTPUT
+          fi
+
   build-and-deploy:
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     name: Build & deploy SWA
     steps:
@@ -20,6 +57,7 @@ jobs:
           node-version: "20"
 
       - name: Install & build
+        if: github.event.action != 'closed'
         working-directory: frontend
         run: |
           npm ci || npm install
@@ -30,7 +68,9 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: upload
+          # `upload` on open/sync/push, `close` on PR close so SWA tears down
+          # the per-PR staging environment automatically.
+          action: ${{ github.event.action == 'closed' && 'close' || 'upload' }}
           app_location: "/frontend"
           output_location: "dist"
           skip_app_build: true

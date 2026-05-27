@@ -1,0 +1,14 @@
+# CODEOWNERS — paths listed here require approval from a listed owner.
+# GitHub auto-requests review when a PR touches matching paths.
+#
+# Replace `@changjuahn` with the repo owner / human reviewer team before use.
+
+# Default: anyone with write access can approve
+*                               @changjuahn
+
+# Restricted — human approval required (Agentic DevOps guardrail)
+/.github/workflows/             @changjuahn
+/.github/copilot-instructions.md @changjuahn
+/.github/CODEOWNERS             @changjuahn
+/infra/                         @changjuahn
+/azure.yaml                     @changjuahn
