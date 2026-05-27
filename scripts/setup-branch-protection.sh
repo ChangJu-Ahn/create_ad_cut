@@ -15,7 +15,14 @@
 
 set -euo pipefail
 
-REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+# Resolve target repo from `origin` (avoids upstream-fork ambiguity).
+ORIGIN_URL=$(git remote get-url origin 2>/dev/null || true)
+REPO=$(echo "$ORIGIN_URL" \
+  | sed -E 's#(git@github.com:|https://github.com/)([^/]+/[^/.]+)(\.git)?#\2#')
+if [ -z "$REPO" ] || ! echo "$REPO" | grep -q '/'; then
+  echo "ERROR: cannot resolve owner/repo from origin URL: $ORIGIN_URL" >&2
+  exit 1
+fi
 BRANCH="${1:-main}"
 
 echo "→ Protecting ${REPO}@${BRANCH}"

@@ -54,6 +54,11 @@ async def test_full_flow_smoke(client: AsyncClient) -> None:
     assert (await client.get("/healthz")).status_code == 200
     assert (await client.get("/api/healthz")).status_code == 200
 
+    # 1b. version endpoint
+    r = await client.get("/api/version")
+    assert r.status_code == 200
+    assert "version" in r.json()
+
     # 2. unauthorized when X-API-Key missing
     r = await client.post("/api/sessions")
     assert r.status_code == 401

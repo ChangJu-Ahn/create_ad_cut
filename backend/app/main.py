@@ -47,6 +47,12 @@ def healthz_api() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/version", tags=["meta"])
+def version() -> dict[str, str]:
+    """Returns the running app version — used to verify deployments."""
+    return {"version": app.version}
+
+
 @app.get("/healthz", tags=["meta"], include_in_schema=False)
 def healthz_root() -> dict[str, str]:
     """Bare-path healthz for the ACA liveness probe (no `/api` prefix)."""

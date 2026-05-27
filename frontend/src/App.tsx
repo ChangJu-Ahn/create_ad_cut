@@ -32,6 +32,8 @@ export default function App() {
             {/* Footer */}
             <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-400">
                 Azure OpenAI &middot; gpt-5.x &middot; gpt-image-2 &middot; Container Apps &middot; Static Web Apps
+                <span className="mx-2">&middot;</span>
+                <span title="Agentic DevOps demo">Agentic DevOps</span>
             </footer>
         </div>
     );
