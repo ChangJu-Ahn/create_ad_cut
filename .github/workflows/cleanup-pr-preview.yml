@@ -1,0 +1,65 @@
+name: cleanup-pr-preview
+
+# Tears down the labeled ACA revision created by deploy-pr-preview when a PR
+# closes (merged or not). Safe to skip silently if Azure secrets aren't
+# configured or no matching revision exists.
+
+on:
+  pull_request:
+    types: [closed]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-pr-preview.yml"
+      - ".github/workflows/cleanup-pr-preview.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cleanup-pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  AZURE_RG: ${{ vars.AZURE_RG }}
+  ACA_NAME: ${{ vars.ACA_NAME }}
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          HAS_CREDS: ${{ secrets.AZURE_CREDENTIALS != '' }}
+        run: |
+          if [ "$HAS_CREDS" = "true" ] && [ -n "$AZURE_RG" ] && [ -n "$ACA_NAME" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+          fi
+
+  teardown:
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deactivate PR revisions
+        run: |
+          # Deactivate any revision whose name contains the PR suffix.
+          # We use revision-specific FQDNs (not labels) for previews, so
+          # there's nothing to unlabel — just turn the revisions off.
+          az containerapp revision list \
+            -g "$AZURE_RG" -n "$ACA_NAME" \
+            --query "[?properties.active && contains(name, '--pr-${PR_NUMBER}-')].name" -o tsv \
+          | while read -r REV; do
+              [ -z "$REV" ] && continue
+              echo "Deactivating PR revision: $REV"
+              az containerapp revision deactivate \
+                -g "$AZURE_RG" -n "$ACA_NAME" --revision "$REV" || true
+            done

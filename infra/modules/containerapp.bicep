@@ -60,12 +60,16 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     properties: {
         managedEnvironmentId: environmentId
         configuration: {
-            // Single-revision mode: production traffic always lands on the most
-            // recent revision created by CI. Backend PR previews build and push
-            // the image to ACR (lightweight gate) but do NOT create an ACA
-            // revision — EasyAuth/SWA Linked Backend makes label-based preview
-            // URLs unreachable to reviewers anyway, so we avoid that complexity.
-            activeRevisionsMode: 'Single'
+            // Multiple revision mode lets us run a stable prod revision AND
+            // labeled PR-preview revisions side by side. The critical invariant
+            // is that we NEVER use `latestRevision: true` in the traffic rules —
+            // that pattern routes prod traffic to whichever revision was created
+            // most recently (including PR previews). Instead, deploy-backend.yml
+            // pins traffic to the exact main-<sha> revision name after each
+            // deploy. Initial traffic config is omitted so the very first
+            // revision (Bicep bootstrap) auto-receives 100%; subsequent deploys
+            // pin explicitly via `az containerapp ingress traffic set`.
+            activeRevisionsMode: 'Multiple'
             ingress: {
                 external: true
                 targetPort: ingressTargetPort
@@ -133,3 +137,27 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
 output id string = app.id
 output name string = app.name
 output fqdn string = app.properties.configuration.ingress.fqdn
+
+// EasyAuth is intentionally disabled at the platform level. The SWA Linked
+// Backend autocreates an authConfig with `unauthenticatedClientAction:
+// RedirectToLoginPage` and an `azureStaticWebApps` provider, which blocks
+// all direct calls (curl, Playwright, PR-preview revisions) with HTTP 401
+// even when an `X-API-Key` header is present. The FastAPI app already
+// enforces API-key auth on every `/api/*` route via `require_api_key`, so
+// EasyAuth was a redundant layer that prevented per-PR backend verification.
+// We disable the platform here so the only gate is the FastAPI dependency.
+//
+// On every deploy, deploy-backend.yml re-asserts this state because the SWA
+// Linked Backend re-binding can flip `platform.enabled` back to `true`.
+resource authConfig 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
+    parent: app
+    name: 'current'
+    properties: {
+        platform: {
+            enabled: false
+        }
+        globalValidation: {
+            unauthenticatedClientAction: 'AllowAnonymous'
+        }
+    }
+}

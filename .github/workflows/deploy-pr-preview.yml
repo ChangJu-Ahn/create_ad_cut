@@ -1,10 +1,17 @@
 name: deploy-pr-preview
 
-# Backend PR gate: build the container image from the PR branch and push to ACR
-# so reviewers can verify the image builds cleanly. We intentionally do NOT
-# create an ACA revision because EasyAuth + the SWA Linked Backend make
-# label-based preview URLs unreachable to reviewers; SWA's own per-PR staging
-# (deploy-frontend.yml) covers the user-facing preview need.
+# Backend PR gate: build the PR image, deploy it as a labeled ACA revision
+# with 0% production traffic, and post a live preview URL to the PR. This
+# lets reviewers and Playwright tests hit the PR's actual backend before
+# merge — without ever touching prod traffic.
+#
+# Safety invariants:
+#   - The new revision is created with weight 0 (never 100). Prod traffic is
+#     pinned to `<aca>--main-<sha>` by deploy-backend.yml and stays there.
+#   - We pass `--revision-suffix pr-N-<sha>` so the revision name is
+#     deterministic and reviewable in `az containerapp revision list`.
+#   - The label `pr-N` exposes a stable URL `https://<aca>--pr-N.<env>/...`
+#     that updates automatically on every push to the PR.
 
 on:
   pull_request:
@@ -22,7 +29,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  AZURE_RG: ${{ vars.AZURE_RG }}
   ACR_NAME: ${{ vars.ACR_NAME }}
+  ACA_NAME: ${{ vars.ACA_NAME }}
   IMAGE_NAME: create-ad-cut-backend
   PR_NUMBER: ${{ github.event.pull_request.number }}
 
@@ -36,7 +45,7 @@ jobs:
         env:
           HAS_CREDS: ${{ secrets.AZURE_CREDENTIALS != '' }}
         run: |
-          if [ "$HAS_CREDS" = "true" ] && [ -n "$ACR_NAME" ]; then
+          if [ "$HAS_CREDS" = "true" ] && [ -n "$AZURE_RG" ] && [ -n "$ACR_NAME" ] && [ -n "$ACA_NAME" ]; then
             echo "ready=true" >> $GITHUB_OUTPUT
           else
             echo "::warning::Skipping PR preview — Azure secrets/variables are not configured."
@@ -64,18 +73,97 @@ jobs:
           docker build -t "$IMAGE" -f backend/Dockerfile backend
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
 
-      - name: Post image info to PR
+      - name: Create preview ACA revision (0% traffic)
+        run: |
+          REVISION_SUFFIX="pr-${PR_NUMBER}-${SHORT_SHA}"
+          NEW_REVISION="${ACA_NAME}--${REVISION_SUFFIX}"
+
+          # `containerapp update --revision-suffix` creates a new revision in
+          # Multiple mode with the existing traffic distribution unchanged
+          # (the new revision gets 0% by default). Empirically verified:
+          # ACA edge ROUTES requests to the revision-specific FQDN
+          # (<aca>--<suffix>.<env>) regardless of weight, but REFUSES the
+          # label FQDN (<aca>--<label>.<env>) with 404 when weight is 0.
+          # → We expose the revision-specific FQDN as the live preview URL.
+          az containerapp update \
+            -g "$AZURE_RG" -n "$ACA_NAME" \
+            --image "$IMAGE" \
+            --revision-suffix "$REVISION_SUFFIX"
+
+          # Re-assert prod traffic pin, defensively (Multiple mode invariant).
+          MAIN_REV=$(az containerapp revision list \
+            -g "$AZURE_RG" -n "$ACA_NAME" \
+            --query "[?properties.active && contains(name, '--main-')] | sort_by(@, &properties.createdTime)[-1].name" -o tsv)
+          if [ -n "$MAIN_REV" ]; then
+            echo "Pinning 100% traffic to main revision: $MAIN_REV"
+            az containerapp ingress traffic set \
+              -g "$AZURE_RG" -n "$ACA_NAME" \
+              --revision-weight "${MAIN_REV}=100"
+          fi
+
+          # Resolve revision-specific FQDN (deterministic from revision name).
+          ENV_FQDN=$(az containerapp show -g "$AZURE_RG" -n "$ACA_NAME" --query properties.configuration.ingress.fqdn -o tsv)
+          ENV_DOMAIN="${ENV_FQDN#*.}"
+          PREVIEW_URL="https://${NEW_REVISION}.${ENV_DOMAIN}"
+          echo "PREVIEW_URL=$PREVIEW_URL" >> $GITHUB_ENV
+          echo "NEW_REVISION=$NEW_REVISION" >> $GITHUB_ENV
+
+      - name: Re-assert EasyAuth disabled (idempotent)
+        run: |
+          # SWA Linked Backend may have re-enabled the authConfig. Backend
+          # security relies on FastAPI's `require_api_key`, not EasyAuth.
+          az containerapp auth update \
+            -g "$AZURE_RG" -n "$ACA_NAME" \
+            --enabled false \
+            --unauthenticated-client-action AllowAnonymous \
+          || true
+
+      - name: Smoke-test preview revision
+        run: |
+          # /healthz is FastAPI-public (no API key needed). With EasyAuth
+          # disabled by deploy-backend.yml, this should return 200 once the
+          # new replica boots. Revision-specific FQDN routes regardless of
+          # traffic weight (label-based FQDNs would 404 at 0% weight).
+          echo "Probing $PREVIEW_URL/healthz ..."
+          for i in 1 2 3 4 5 6; do
+            CODE=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "$PREVIEW_URL/healthz" || echo "000")
+            echo "  attempt $i → HTTP $CODE"
+            if [ "$CODE" = "200" ]; then
+              echo "Preview revision is healthy."
+              echo "PREVIEW_HEALTH=$CODE" >> $GITHUB_ENV
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::Preview did not return 200 after 6 attempts (last code: $CODE). The revision may still be activating; the comment URL is posted anyway."
+          echo "PREVIEW_HEALTH=$CODE" >> $GITHUB_ENV
+
+      - name: Post live preview info to PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: pr-preview-backend
           message: |
-            ### 🐳 Backend image built
+            ### 🚀 Backend PR preview is live
 
             | | |
             |---|---|
             | Image | `${{ env.IMAGE }}` |
-            | Status | ✅ pushed to ACR — production traffic untouched |
+            | Revision | `${{ env.NEW_REVISION }}` (0% production traffic) |
+            | Live URL | <${{ env.PREVIEW_URL }}> |
+            | Smoke check | `/healthz` → HTTP `${{ env.PREVIEW_HEALTH }}` (200 expected) |
 
-            On merge to `main`, `deploy-backend.yml` will roll this image into the live ACA revision.
-            Reviewer-facing UI preview comes from the SWA staging URL above (frontend job).
+            **How to verify this PR's backend changes:**
+
+            ```bash
+            # Public endpoint — no auth needed:
+            curl ${{ env.PREVIEW_URL }}/healthz
+
+            # API endpoints — `X-API-Key` header required (see azd env: BACKEND_API_KEY):
+            curl -H "x-api-key: <KEY>" ${{ env.PREVIEW_URL }}/api/modes
+            ```
+
+            Production traffic stays on the current `main-*` revision (100%).
+            On merge, `deploy-backend.yml` creates a new `main-<sha>` revision
+            and shifts traffic to it by exact name (never `latestRevision`).

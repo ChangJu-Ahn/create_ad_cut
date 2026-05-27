@@ -61,13 +61,29 @@ jobs:
 
       - name: Update Container App revision
         run: |
-          # Single-revision mode: az containerapp update creates a new revision
-          # and immediately routes 100% traffic to it. Previous revision is
-          # automatically deactivated.
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REVISION_SUFFIX="main-${SHORT_SHA}"
+          NEW_REVISION="${ACA_NAME}--${REVISION_SUFFIX}"
+          echo "NEW_REVISION=$NEW_REVISION" >> $GITHUB_ENV
+
+          # Create a new revision with a deterministic name. Multiple-revision
+          # mode means this lands with 0% traffic; we shift traffic explicitly
+          # in the next step so prod cannot accidentally route to a half-baked
+          # revision.
           az containerapp update \
             -g "$AZURE_RG" \
             -n "$ACA_NAME" \
-            --image "$IMAGE"
+            --image "$IMAGE" \
+            --revision-suffix "$REVISION_SUFFIX"
+
+          # Pin 100% traffic to the new revision by exact name. NEVER use
+          # `latestRevision=true` here — that would route prod to whichever
+          # revision was created most recently, including future PR previews.
+          az containerapp ingress traffic set \
+            -g "$AZURE_RG" \
+            -n "$ACA_NAME" \
+            --revision-weight "${NEW_REVISION}=100"
+
           # Ensure ingress target port matches the FastAPI listener (8000),
           # in case the previous revision was still on the bootstrap port (80).
           az containerapp ingress update \
@@ -75,6 +91,34 @@ jobs:
             -n "$ACA_NAME" \
             --type external \
             --target-port 8000
+
+      - name: Deactivate previous main revisions
+        run: |
+          # Keep the new revision active; deactivate older main-* revisions to
+          # reclaim quota. PR-preview revisions (label starts with `pr-`) are
+          # left alone — they are cleaned up by cleanup-pr-preview.yml.
+          az containerapp revision list \
+            -g "$AZURE_RG" -n "$ACA_NAME" \
+            --query "[?properties.active && name != '${NEW_REVISION}' && contains(name, '--main-')].name" -o tsv \
+          | while read -r REV; do
+              [ -z "$REV" ] && continue
+              echo "Deactivating old revision: $REV"
+              az containerapp revision deactivate \
+                -g "$AZURE_RG" -n "$ACA_NAME" --revision "$REV" || true
+            done
+
+      - name: Disable EasyAuth (idempotent)
+        run: |
+          # The SWA Linked Backend autobinds an authConfig with
+          # RedirectToLoginPage, which blocks per-PR backend verification
+          # (curl, Playwright, label/revision URLs). FastAPI's `require_api_key`
+          # is the real auth gate. We re-assert this on every deploy because
+          # SWA may re-create the authConfig when re-linking.
+          az containerapp auth update \
+            -g "$AZURE_RG" -n "$ACA_NAME" \
+            --enabled false \
+            --unauthenticated-client-action AllowAnonymous \
+          || true
 
       - name: Show app URL
         run: |
