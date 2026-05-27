@@ -29,11 +29,21 @@ for var in RG ACR ACA SWA SUB; do
   fi
 done
 
+# Resolve target repo from `origin` (avoids upstream-fork ambiguity).
+ORIGIN_URL=$(git remote get-url origin 2>/dev/null || true)
+REPO=$(echo "$ORIGIN_URL" \
+  | sed -E 's#(git@github.com:|https://github.com/)([^/]+/[^/.]+)(\.git)?#\2#')
+if [ -z "$REPO" ] || ! echo "$REPO" | grep -q '/'; then
+  echo "ERROR: cannot resolve owner/repo from origin URL: $ORIGIN_URL" >&2
+  exit 1
+fi
+
 echo "  Subscription : $SUB"
 echo "  ResourceGroup: $RG"
 echo "  ACR          : $ACR"
 echo "  ACA          : $ACA"
 echo "  SWA          : $SWA"
+echo "  Repo         : $REPO"
 
 SP_NAME="sp-create-ad-cut-deploy"
 SCOPE="/subscriptions/${SUB}/resourceGroups/${RG}"
@@ -70,16 +80,16 @@ fi
 
 echo
 echo "==> Pushing GitHub Secrets"
-gh secret set AZURE_CREDENTIALS    --body "$SP_JSON"
-gh secret set SWA_DEPLOYMENT_TOKEN --body "$SWA_TOKEN"
+gh secret set AZURE_CREDENTIALS    --repo "$REPO" --body "$SP_JSON"
+gh secret set SWA_DEPLOYMENT_TOKEN --repo "$REPO" --body "$SWA_TOKEN"
 
 echo
 echo "==> Pushing GitHub Variables"
-gh variable set AZURE_RG --body "$RG"
-gh variable set ACR_NAME --body "$ACR"
-gh variable set ACA_NAME --body "$ACA"
+gh variable set AZURE_RG --repo "$REPO" --body "$RG"
+gh variable set ACR_NAME --repo "$REPO" --body "$ACR"
+gh variable set ACA_NAME --repo "$REPO" --body "$ACA"
 
 echo
 echo "Done. Verify with:"
-echo "  gh secret list"
-echo "  gh variable list"
+echo "  gh secret list   --repo $REPO"
+echo "  gh variable list --repo $REPO"
