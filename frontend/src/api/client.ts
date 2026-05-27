@@ -98,6 +98,15 @@ export interface SessionView {
     jobs: GenerateJobOut[];
 }
 
+export interface BoardPost {
+    id: string;
+    type: "post";
+    sessionId: string;
+    author: string;
+    content: string;
+    createdAt: string;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
@@ -173,4 +182,15 @@ export function getSession(sessionId: string) {
 
 export function listStyleHeaders() {
     return request<StyleHeaderInfo[]>("/style-headers");
+}
+
+export function createPost(author: string, content: string) {
+    return request<BoardPost>("/board/posts", {
+        method: "POST",
+        body: JSON.stringify({ author, content }),
+    });
+}
+
+export function listPosts(limit = 50) {
+    return request<BoardPost[]>(`/board/posts?limit=${limit}`);
 }

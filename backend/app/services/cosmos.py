@@ -50,7 +50,10 @@ def now_iso() -> str:
 
 def get_session(session_id: str) -> dict[str, Any] | None:
     try:
-        return container().read_item(item=session_id, partition_key=session_id)
+        doc = container().read_item(item=session_id, partition_key=session_id)
+        if doc.get("type") not in (None, "session"):
+            return None
+        return doc
     except CosmosResourceNotFoundError:
         return None
 
@@ -64,6 +67,7 @@ def create_session(session_id: str) -> dict[str, Any]:
     now = now_iso()
     doc = {
         "id": session_id,
+        "type": "session",
         "sessionId": session_id,
         "createdAt": now,
         "updatedAt": now,
@@ -72,3 +76,20 @@ def create_session(session_id: str) -> dict[str, Any]:
         "generations": [],
     }
     return container().create_item(doc)
+
+
+def create_post(doc: dict[str, Any]) -> dict[str, Any]:
+    return container().create_item(doc)
+
+
+def list_posts(limit: int) -> list[dict[str, Any]]:
+    query = (
+        f'SELECT TOP {int(limit)} c.id, c.type, c.sessionId, c.author, c.content, c.createdAt '
+        'FROM c WHERE c.type = "post" ORDER BY c.createdAt DESC'
+    )
+    return list(
+        container().query_items(
+            query=query,
+            enable_cross_partition_query=True,
+        )
+    )

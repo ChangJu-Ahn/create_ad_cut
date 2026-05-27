@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routes import analyze, generate, prompt, sessions, style_headers
+from app.routes import analyze, board, generate, prompt, sessions, style_headers
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level.upper())
@@ -36,6 +36,7 @@ app.add_middleware(
 # All app routes are mounted under `/api` so they line up with the SWA Linked
 # Backend prefix (which forwards `/api/*` to ACA without stripping).
 app.include_router(sessions.router, prefix="/api")
+app.include_router(board.router, prefix="/api")
 app.include_router(analyze.router, prefix="/api")
 app.include_router(prompt.router, prefix="/api")
 app.include_router(generate.router, prefix="/api")

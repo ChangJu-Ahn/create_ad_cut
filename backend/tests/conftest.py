@@ -32,7 +32,7 @@ os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 @pytest.fixture
 def fake_state() -> dict[str, Any]:
     """Shared state across cosmos / blob / aoai fakes inside a single test."""
-    return {"sessions": {}, "blobs": {}}
+    return {"sessions": {}, "posts": {}, "blobs": {}}
 
 
 @pytest.fixture(autouse=True)
@@ -44,6 +44,7 @@ def patch_externals(monkeypatch: pytest.MonkeyPatch, fake_state: dict[str, Any])
         now = "2026-05-01T00:00:00+00:00"
         doc = {
             "id": session_id,
+            "type": "session",
             "sessionId": session_id,
             "createdAt": now,
             "updatedAt": now,
@@ -55,16 +56,33 @@ def patch_externals(monkeypatch: pytest.MonkeyPatch, fake_state: dict[str, Any])
         return doc
 
     def _get_session(session_id: str) -> dict[str, Any] | None:
-        return fake_state["sessions"].get(session_id)
+        doc = fake_state["sessions"].get(session_id)
+        if doc is None or doc.get("type") not in (None, "session"):
+            return None
+        return doc
 
     def _upsert_session(doc: dict[str, Any]) -> dict[str, Any]:
         doc["updatedAt"] = "2026-05-01T00:00:01+00:00"
         fake_state["sessions"][doc["sessionId"]] = doc
         return doc
 
+    def _create_post(doc: dict[str, Any]) -> dict[str, Any]:
+        fake_state["posts"][doc["id"]] = doc
+        return doc
+
+    def _list_posts(limit: int) -> list[dict[str, Any]]:
+        posts = sorted(
+            fake_state["posts"].values(),
+            key=lambda p: p["createdAt"],
+            reverse=True,
+        )
+        return posts[:limit]
+
     monkeypatch.setattr(cosmos, "create_session", _create_session)
     monkeypatch.setattr(cosmos, "get_session", _get_session)
     monkeypatch.setattr(cosmos, "upsert_session", _upsert_session)
+    monkeypatch.setattr(cosmos, "create_post", _create_post)
+    monkeypatch.setattr(cosmos, "list_posts", _list_posts)
     monkeypatch.setattr(cosmos, "now_iso", lambda: "2026-05-01T00:00:02+00:00")
 
     # ---- blob ----

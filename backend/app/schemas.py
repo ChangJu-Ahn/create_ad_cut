@@ -16,6 +16,20 @@ class SessionCreated(BaseModel):
     createdAt: datetime
 
 
+class BoardPostIn(BaseModel):
+    author: str | None = None
+    content: str
+
+
+class BoardPostOut(BaseModel):
+    id: str
+    type: str
+    sessionId: str
+    author: str
+    content: str
+    createdAt: datetime
+
+
 class AnalyzeOut(BaseModel):
     sessionId: str
     inputImageUrl: str = Field(..., description="Time-limited SAS URL of the uploaded input image.")
