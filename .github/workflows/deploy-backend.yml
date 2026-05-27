@@ -58,18 +58,16 @@ jobs:
           docker build -t "$IMAGE" -f backend/Dockerfile backend
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-          echo "REVISION_SUFFIX=main-${SHORT_SHA}" >> $GITHUB_ENV
 
       - name: Update Container App revision
         run: |
-          # Multiple-revision mode: create a new traceable revision per main
-          # commit. The `latestRevision: true` traffic rule (set in Bicep)
-          # routes 100% of production traffic to the freshest revision.
+          # Single-revision mode: az containerapp update creates a new revision
+          # and immediately routes 100% traffic to it. Previous revision is
+          # automatically deactivated.
           az containerapp update \
             -g "$AZURE_RG" \
             -n "$ACA_NAME" \
-            --image "$IMAGE" \
-            --revision-suffix "$REVISION_SUFFIX"
+            --image "$IMAGE"
           # Ensure ingress target port matches the FastAPI listener (8000),
           # in case the previous revision was still on the bootstrap port (80).
           az containerapp ingress update \
@@ -82,4 +80,3 @@ jobs:
         run: |
           FQDN=$(az containerapp show -g "$AZURE_RG" -n "$ACA_NAME" --query properties.configuration.ingress.fqdn -o tsv)
           echo "Backend URL: https://$FQDN" >> $GITHUB_STEP_SUMMARY
-          echo "Revision suffix: $REVISION_SUFFIX" >> $GITHUB_STEP_SUMMARY

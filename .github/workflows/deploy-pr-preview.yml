@@ -1,10 +1,10 @@
 name: deploy-pr-preview
 
-# Per-PR backend preview environment.
-# Builds the backend image and creates a labelled ACA revision (`pr-<N>`) so
-# reviewers can validate the change at a stable URL before merging. Frontend
-# previews come for free from `Azure/static-web-apps-deploy` when wired with
-# `pull_request` triggers in deploy-frontend.yml.
+# Backend PR gate: build the container image from the PR branch and push to ACR
+# so reviewers can verify the image builds cleanly. We intentionally do NOT
+# create an ACA revision because EasyAuth + the SWA Linked Backend make
+# label-based preview URLs unreachable to reviewers; SWA's own per-PR staging
+# (deploy-frontend.yml) covers the user-facing preview need.
 
 on:
   pull_request:
@@ -15,16 +15,14 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write  # sticky comment with preview URL
+  pull-requests: write
 
 concurrency:
   group: deploy-pr-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
-  AZURE_RG: ${{ vars.AZURE_RG }}
   ACR_NAME: ${{ vars.ACR_NAME }}
-  ACA_NAME: ${{ vars.ACA_NAME }}
   IMAGE_NAME: create-ad-cut-backend
   PR_NUMBER: ${{ github.event.pull_request.number }}
 
@@ -38,7 +36,7 @@ jobs:
         env:
           HAS_CREDS: ${{ secrets.AZURE_CREDENTIALS != '' }}
         run: |
-          if [ "$HAS_CREDS" = "true" ] && [ -n "$AZURE_RG" ] && [ -n "$ACR_NAME" ] && [ -n "$ACA_NAME" ]; then
+          if [ "$HAS_CREDS" = "true" ] && [ -n "$ACR_NAME" ]; then
             echo "ready=true" >> $GITHUB_OUTPUT
           else
             echo "::warning::Skipping PR preview — Azure secrets/variables are not configured."
@@ -66,58 +64,18 @@ jobs:
           docker build -t "$IMAGE" -f backend/Dockerfile backend
           docker push "$IMAGE"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-          echo "REVISION_SUFFIX=pr-${PR_NUMBER}-${SHORT_SHA}" >> $GITHUB_ENV
 
-      - name: Create labelled revision
-        run: |
-          # Copy the current production revision template, swap the image,
-          # and stamp it with a deterministic suffix so a stable label URL
-          # works across the lifetime of the PR.
-          az containerapp revision copy \
-            -g "$AZURE_RG" \
-            -n "$ACA_NAME" \
-            --image "$IMAGE" \
-            --revision-suffix "$REVISION_SUFFIX" >/dev/null
-
-          REVISION_NAME="${ACA_NAME}--${REVISION_SUFFIX}"
-          LABEL="pr-${PR_NUMBER}"
-
-          # Move the label off any prior PR revision so the URL points at the
-          # latest preview. `--no-prompt` is required because the label may
-          # not exist on the first run for this PR.
-          az containerapp revision label remove \
-            -g "$AZURE_RG" -n "$ACA_NAME" \
-            --label "$LABEL" --no-prompt >/dev/null 2>&1 || true
-
-          az containerapp revision label add \
-            -g "$AZURE_RG" -n "$ACA_NAME" \
-            --label "$LABEL" --revision "$REVISION_NAME" >/dev/null
-
-          FQDN=$(az containerapp show -g "$AZURE_RG" -n "$ACA_NAME" \
-            --query properties.configuration.ingress.fqdn -o tsv)
-          # Label FQDN is derived by inserting `--<label>` after the app name.
-          PREVIEW_URL="https://${ACA_NAME}--${LABEL}.${FQDN#*.}"
-          echo "PREVIEW_URL=$PREVIEW_URL" >> $GITHUB_ENV
-          echo "REVISION_NAME=$REVISION_NAME" >> $GITHUB_ENV
-
-      - name: Post preview URL to PR
+      - name: Post image info to PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: pr-preview-backend
           message: |
-            ### 🚀 Backend PR preview ready
+            ### 🐳 Backend image built
 
             | | |
             |---|---|
-            | Preview URL | ${{ env.PREVIEW_URL }} |
-            | Health check | ${{ env.PREVIEW_URL }}/api/healthz |
-            | Revision | `${{ env.REVISION_NAME }}` |
             | Image | `${{ env.IMAGE }}` |
+            | Status | ✅ pushed to ACR — production traffic untouched |
 
-            This revision is **isolated from production traffic** — main still serves the latest merged build.
-            The preview is torn down automatically when the PR closes.
-
-      - name: Summary
-        run: |
-          echo "Preview URL: $PREVIEW_URL" >> $GITHUB_STEP_SUMMARY
-          echo "Revision: $REVISION_NAME" >> $GITHUB_STEP_SUMMARY
+            On merge to `main`, `deploy-backend.yml` will roll this image into the live ACA revision.
+            Reviewer-facing UI preview comes from the SWA staging URL above (frontend job).

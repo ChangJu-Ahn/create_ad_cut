@@ -40,8 +40,8 @@ flowchart LR
     subgraph gh["GitHub"]
         PR((Pull Request))
         CI[ci-backend<br/>ci-frontend<br/>pytest + tsc]
-        PREVIEW[deploy-pr-preview<br/>ACA revision pr-N + SWA staging]
-        REVIEW{사람 리뷰<br/>+ preview URL 검증}
+        PREVIEW[deploy-pr-preview<br/>ACR image build + SWA staging]
+        REVIEW{사람 리뷰<br/>+ SWA preview URL 검증}
         MAIN[main 머지]
     end
 
@@ -94,7 +94,7 @@ make bootstrap   # backend/.env 생성 + venv + npm install
 make dev         # backend + frontend 동시 기동 → http://localhost:5173
 ```
 
-코드 수정 → `make test` → `git push origin agent/<slug>` → PR 열기 → preview URL 댓글 확인 → 리뷰 → 머지.
+코드 수정 → `make test` → `git push origin agent/<slug>` → PR 열기 → SWA preview URL·CI 검증 → 리뷰 → 머지.
 
 ### 2. 에이전트 활성화
 
@@ -103,7 +103,7 @@ GitHub Repo 의 **Settings → Code & automation → Copilot** 에서 *Coding ag
 - Issue 본문에 작업 설명 + `@copilot` 멘션, 또는 *Assign to Copilot* 클릭
 - 에이전트가 `agent/<slug>` 브랜치를 만들고 PR 을 자동 생성
 - CI + preview 워크플로우가 자동 실행
-- 사람은 PR 댓글에 게시된 preview URL 로 검증 후 리뷰/머지
+- 사람은 PR 댓글의 SWA preview URL 로 UI 검증 후 리뷰/머지 (backend 변경은 image build 게이트 + post-merge prod 반영 확인)
 
 ---
 
@@ -113,8 +113,7 @@ GitHub Repo 의 **Settings → Code & automation → Copilot** 에서 *Coding ag
 |---|---|---|---|
 | [`ci-backend`](.github/workflows/ci-backend.yml) | PR + main push (`backend/**`) | `pytest` + `ruff check` + Docker build | ✅ 머지 게이트 |
 | [`ci-frontend`](.github/workflows/ci-frontend.yml) | PR + main push (`frontend/**`) | `tsc` + `vite build` | ✅ 머지 게이트 |
-| [`deploy-pr-preview`](.github/workflows/deploy-pr-preview.yml) | PR open/sync (`backend/**`) | ACR build → ACA revision (label `pr-N`) | 🔗 PR 댓글에 preview URL |
-| [`cleanup-pr-preview`](.github/workflows/cleanup-pr-preview.yml) | PR close | revision deactivate + label 제거 | 🧹 자동 정리 |
+| [`deploy-pr-preview`](.github/workflows/deploy-pr-preview.yml) | PR open/sync (`backend/**`) | ACR image build & push (no ACA revision) | 🐳 PR 댓글에 image 태그 |
 | [`deploy-backend`](.github/workflows/deploy-backend.yml) | main push (`backend/**`) | ACR build → ACA revision (suffix `main-<sha>`) → 100% traffic | 🚀 prod 백엔드 |
 | [`deploy-frontend`](.github/workflows/deploy-frontend.yml) | main push + PR (`frontend/**`) | SWA 빌드/배포 (prod or per-PR staging) | 🚀 prod / staging SWA |
 
@@ -201,31 +200,26 @@ Windows 사용자: `scripts/bootstrap-local.ps1` 직접 호출.
 
 ## 🧪 PR Preview 동작 원리
 
-ACA `activeRevisionsMode: 'Multiple'` ([infra/modules/containerapp.bicep](infra/modules/containerapp.bicep)) 를 켰기 때문에 가능합니다:
+두 쪽의 미리보기 전략은 다릅니다 — 이 레포의 EasyAuth (SWA Linked Backend) 특성 때문에 backend 직접 URL 은 reviewer 가 열 수 없으므로 **SWA preview 가 유일한 검증 경로** 입니다.
 
-1. PR open/sync → `deploy-pr-preview` 가 `az containerapp revision copy --revision-suffix pr-<N>-<sha>` 실행
-2. `az containerapp revision label add --label pr-<N> --revision <name>` 로 안정 URL 부여
-3. 프로덕션 트래픽은 `latestRevision: true` 규칙으로 **항상 최신 main revision** 으로만 흐름 — PR revision 에는 트래픽 0%
-4. 외부에서 `https://<app>--pr-N.<env-domain>` URL 로만 접근 가능
-5. PR close → `cleanup-pr-preview` 가 label 제거 + revision deactivate (과금 중단)
+- **Frontend (SWA)** — `Azure/static-web-apps-deploy@v1` 이 `pull_request` 이벤트를 받으면 staging 환경을 자동 생성하고 PR 댓글에 URL 을 게시합니다. 마이크로서비스는 main 의 Linked Backend 로 돌아갑니다 — backend API 테스트는 prod 엔드포인트로 이뤄집니다.
+- **Backend (ACA)** — PR 이 열릴 때 이미지를 ACR 로 빌드/푸시만 하고 ACA revision 은 만들지 않습니다. CI 테스트 + image build 통과가 backend 변경 게이트입니다. main 머지 시 `deploy-backend` 가 이 이미지를 prod ACA 에 배포합니다.
 
-SWA 측은 `Azure/static-web-apps-deploy@v1` 이 `pull_request` 이벤트를 받으면 staging 환경을 자동 생성/정리합니다.
-
-> **참고**: PR preview revision 들은 **prod Cosmos / Blob / AOAI 를 공유**합니다. 데모 데이터만 다루므로 의도된 단순화입니다. 격리가 필요하면 PR 별 DB 컨테이너를 만들도록 workflow 를 확장하세요.
+> **왜 label-based ACA preview 는 도입하지 않았나?** EasyAuth 가 SWA 도메인에 한정되어 있으므로 label FQDN (`<app>--pr-N.<env>`) 은 reviewer 가 직접 호출해도 401/404 를 반환합니다. revision을 만들 가치가 없고 (흐릅 trade-off 참고)
 
 ---
 
 ## 🚨 트러블슈팅
 
-### PR preview URL 이 404
+### SWA preview URL 이 표시안됨
 
-- ACA 가 Multiple revisions 모드인지 확인: `az containerapp show -g $RG -n $APP --query properties.configuration.activeRevisionsMode` → `Multiple` 이어야 함
-- Bicep 변경 후 한 번 더 `azd provision` 했는지 확인
+- `SWA_DEPLOYMENT_TOKEN` secret 이 등록되었는지 확인 (`gh secret list --repo <owner/repo>`)
+- `deploy-frontend` 의 preflight job 이 skip 으로 떨어졌으면 secret 미설정
 
-### preview revision 이 안 만들어짐 / 401
+### preview 이미지 빌드 실패 / 401
 
-- GitHub Actions `AZURE_CREDENTIALS` SP 에 ACR `AcrPush` + ACA `Container Apps Contributor` 권한이 있는지 확인
-- `vars` 에 `AZURE_RG` / `ACR_NAME` / `ACA_NAME` 모두 설정됐는지 — preflight job 이 명시적으로 fail 합니다
+- GitHub Actions `AZURE_CREDENTIALS` SP 에 ACR `AcrPush` 권한이 있는지 확인
+- `vars` 에 `ACR_NAME` 이 설정됐는지 — preflight job 이 명시적으로 fail 합니다
 
 ### 로컬에서 401 (Cosmos / Blob)
 
