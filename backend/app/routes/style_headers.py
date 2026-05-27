@@ -28,3 +28,8 @@ def list_style_headers() -> list[StyleHeaderInfo]:
         )
         for mode, meta in MODE_META.items()
     ]
+
+
+@router.get("/modes")
+def list_modes() -> dict[str, list[str]]:
+    return {"modes": list(MODE_META.keys())}

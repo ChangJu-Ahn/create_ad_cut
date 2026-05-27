@@ -200,6 +200,14 @@ async def test_unsupported_media_type(client: AsyncClient) -> None:
     assert r.status_code == 415
 
 
+async def test_modes_endpoint(client: AsyncClient) -> None:
+    r = await client.get("/api/modes", headers=HEADERS)
+    assert r.status_code == 200
+    body = r.json()
+    assert isinstance(body.get("modes"), list)
+    assert {"lookbook", "front", "side", "back"}.issubset(set(body["modes"]))
+
+
 async def test_style_headers_endpoint(client: AsyncClient) -> None:
     r = await client.get("/api/style-headers", headers=HEADERS)
     assert r.status_code == 200
