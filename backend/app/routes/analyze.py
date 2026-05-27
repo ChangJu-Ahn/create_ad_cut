@@ -5,14 +5,13 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 
-from app.auth import require_api_key
 from app.config import get_settings
 from app.schemas import AnalyzeOut
 from app.services import aoai_analyze, blob, cosmos
 
-router = APIRouter(prefix="/sessions", tags=["analyze"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/sessions", tags=["analyze"])
 
 ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp"}
 MAX_INPUT_BYTES = 10 * 1024 * 1024  # 10 MB

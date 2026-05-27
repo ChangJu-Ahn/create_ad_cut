@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
-from app.auth import require_api_key
 from app.schemas import PromptUpdateIn, PromptUpdateOut
 from app.services import cosmos
 
-router = APIRouter(prefix="/sessions", tags=["prompt"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/sessions", tags=["prompt"])
 
 
 @router.patch("/{session_id}/prompt", response_model=PromptUpdateOut)

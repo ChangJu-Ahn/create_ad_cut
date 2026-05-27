@@ -14,7 +14,6 @@ from unittest.mock import MagicMock
 import pytest
 
 # --- Env vars required by app.config.Settings -------------------------------
-os.environ.setdefault("BACKEND_API_KEY", "test-key")
 os.environ.setdefault("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
 os.environ.setdefault("AZURE_OPENAI_API_KEY", "test-aoai-key")
 os.environ.setdefault("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")

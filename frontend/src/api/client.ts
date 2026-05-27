@@ -10,8 +10,6 @@
  * exercise the PR's backend before merge.
  */
 
-const API_KEY_STORAGE = "create-ad-cut.apiKey";
-
 // Absolute URL (with trailing path) when overridden, otherwise relative `/api`.
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api";
 
@@ -100,17 +98,8 @@ export interface SessionView {
     jobs: GenerateJobOut[];
 }
 
-export function getApiKey(): string {
-    return localStorage.getItem(API_KEY_STORAGE) ?? "";
-}
-
-export function setApiKey(key: string): void {
-    localStorage.setItem(API_KEY_STORAGE, key);
-}
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
-    headers.set("X-API-Key", getApiKey());
     if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
         headers.set("Content-Type", "application/json");
     }

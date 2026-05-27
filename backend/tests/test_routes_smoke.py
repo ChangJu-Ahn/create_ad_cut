@@ -17,8 +17,6 @@ from PIL import Image
 
 from app.main import app
 
-HEADERS = {"X-API-Key": "test-key"}
-
 
 def _png_bytes() -> bytes:
     img = Image.new("RGB", (256, 256), (200, 150, 100))
@@ -33,7 +31,7 @@ async def _wait_for_job(
     deadline = asyncio.get_event_loop().time() + timeout_s
     while asyncio.get_event_loop().time() < deadline:
         r = await client.get(
-            f"/api/sessions/{session_id}/generate/jobs/{job_id}", headers=HEADERS
+            f"/api/sessions/{session_id}/generate/jobs/{job_id}"
         )
         assert r.status_code == 200, r.text
         body = r.json()
@@ -59,19 +57,15 @@ async def test_full_flow_smoke(client: AsyncClient) -> None:
     assert r.status_code == 200
     assert "version" in r.json()
 
-    # 2. unauthorized when X-API-Key missing
+    # 2. create session
     r = await client.post("/api/sessions")
-    assert r.status_code == 401
-
-    # 3. create session
-    r = await client.post("/api/sessions", headers=HEADERS)
     assert r.status_code == 201
     session_id = r.json()["sessionId"]
 
-    # 4. analyze (multipart)
+    # 3. analyze (multipart)
     files = {"image": ("input.png", _png_bytes(), "image/png")}
     r = await client.post(
-        f"/api/sessions/{session_id}/analyze", headers=HEADERS, files=files
+        f"/api/sessions/{session_id}/analyze", files=files
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -82,16 +76,13 @@ async def test_full_flow_smoke(client: AsyncClient) -> None:
     # 5. patch prompt
     r = await client.patch(
         f"/api/sessions/{session_id}/prompt",
-        headers=HEADERS,
-        json={"promptMd": "사람이 검수한 프롬프트"},
-    )
+        json={"promptMd": "사람이 검수한 프롬프트"})
     assert r.status_code == 200
     assert "검수한" in r.json()["promptMd"]
 
     # 6. generate 4 built-in modes + 1 custom cut → 202 + jobId
     r = await client.post(
         f"/api/sessions/{session_id}/generate",
-        headers=HEADERS,
         json={
             "items": [
                 {"mode": "lookbook"},
@@ -105,8 +96,7 @@ async def test_full_flow_smoke(client: AsyncClient) -> None:
                     "useReference": False,
                 },
             ]
-        },
-    )
+        })
     assert r.status_code == 202, r.text
     initial = r.json()
     assert initial["status"] == "running"
@@ -125,7 +115,7 @@ async def test_full_flow_smoke(client: AsyncClient) -> None:
     assert all(it["generationId"] for it in final["items"])
 
     # 7. session view returns persisted state (5 generations stacked)
-    r = await client.get(f"/api/sessions/{session_id}", headers=HEADERS)
+    r = await client.get(f"/api/sessions/{session_id}")
     assert r.status_code == 200
     view = r.json()
     assert view["promptMd"].endswith("검수한 프롬프트")
@@ -137,7 +127,6 @@ async def test_full_flow_smoke(client: AsyncClient) -> None:
     # 8. regenerate one cut → appended, history grows to 6
     r = await client.post(
         f"/api/sessions/{session_id}/generate",
-        headers=HEADERS,
         json={
             "items": [
                 {
@@ -145,63 +134,58 @@ async def test_full_flow_smoke(client: AsyncClient) -> None:
                     "promptHeader": "1024x1024 정면 컷, 더 강한 백라이트로 재생성",
                 }
             ]
-        },
-    )
+        })
     assert r.status_code == 202
     await _wait_for_job(client, session_id, r.json()["jobId"])
-    r = await client.get(f"/api/sessions/{session_id}", headers=HEADERS)
+    r = await client.get(f"/api/sessions/{session_id}")
     assert len(r.json()["generations"]) == 6
 
 
 async def test_generate_requires_analysis(client: AsyncClient) -> None:
-    r = await client.post("/api/sessions", headers=HEADERS)
+    r = await client.post("/api/sessions")
     sid = r.json()["sessionId"]
     r = await client.post(
         f"/api/sessions/{sid}/generate",
-        headers=HEADERS,
-        json={"items": [{"mode": "front"}]},
-    )
+        json={"items": [{"mode": "front"}]})
     assert r.status_code == 409
     assert r.json()["detail"]["code"] == "prerequisites_missing"
 
 
 async def test_custom_requires_label_and_header(client: AsyncClient) -> None:
-    r = await client.post("/api/sessions", headers=HEADERS)
+    r = await client.post("/api/sessions")
     sid = r.json()["sessionId"]
     files = {"image": ("input.png", _png_bytes(), "image/png")}
-    await client.post(f"/api/sessions/{sid}/analyze", headers=HEADERS, files=files)
+    await client.post(f"/api/sessions/{sid}/analyze", files=files)
 
     r = await client.post(
         f"/api/sessions/{sid}/generate",
-        headers=HEADERS,
-        json={"items": [{"mode": "custom"}]},
-    )
+        json={"items": [{"mode": "custom"}]})
     assert r.status_code == 400
     assert r.json()["detail"]["code"] == "custom_prompt_required"
 
 
 async def test_get_job_404(client: AsyncClient) -> None:
-    r = await client.post("/api/sessions", headers=HEADERS)
+    r = await client.post("/api/sessions")
     sid = r.json()["sessionId"]
     r = await client.get(
-        f"/api/sessions/{sid}/generate/jobs/does-not-exist", headers=HEADERS
+        f"/api/sessions/{sid}/generate/jobs/does-not-exist"
     )
     assert r.status_code == 404
     assert r.json()["detail"]["code"] == "job_not_found"
 
 
 async def test_unsupported_media_type(client: AsyncClient) -> None:
-    r = await client.post("/api/sessions", headers=HEADERS)
+    r = await client.post("/api/sessions")
     sid = r.json()["sessionId"]
     files = {"image": ("input.gif", b"GIF89a", "image/gif")}
     r = await client.post(
-        f"/api/sessions/{sid}/analyze", headers=HEADERS, files=files
+        f"/api/sessions/{sid}/analyze", files=files
     )
     assert r.status_code == 415
 
 
 async def test_style_headers_endpoint(client: AsyncClient) -> None:
-    r = await client.get("/api/style-headers", headers=HEADERS)
+    r = await client.get("/api/style-headers")
     assert r.status_code == 200
     headers = r.json()
     assert {h["mode"] for h in headers} == {"lookbook", "front", "side", "back"}

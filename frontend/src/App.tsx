@@ -1,5 +1,4 @@
 import { Link, Route, Routes } from "react-router-dom";
-import ApiKeyDialog from "./components/ApiKeyDialog";
 import GeneratePage from "./pages/GeneratePage";
 import ResultsPage from "./pages/ResultsPage";
 import ReviewPage from "./pages/ReviewPage";
@@ -15,7 +14,6 @@ export default function App() {
                         <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-900 text-white text-xs">AI</span>
                         create-ad-cut
                     </Link>
-                    <ApiKeyDialog />
                 </div>
             </header>
 

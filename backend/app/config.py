@@ -25,9 +25,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # API security
-    backend_api_key: str = Field(..., alias="BACKEND_API_KEY")
-
     # Azure OpenAI (AAD auth via DefaultAzureCredential)
     azure_openai_endpoint: str = Field(..., alias="AZURE_OPENAI_ENDPOINT")
     azure_openai_api_version: str = Field(
