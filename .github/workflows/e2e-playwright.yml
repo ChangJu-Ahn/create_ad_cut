@@ -22,7 +22,11 @@ concurrency:
 
 env:
   PR_NUMBER: ${{ github.event.pull_request.number }}
-  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+  # Use the same SHA the deploy workflows use for their revision suffix.
+  # `pull_request.head.sha` is the head commit, but GITHUB_SHA on a
+  # pull_request event is the merge commit — and that is what
+  # deploy-pr-preview / deploy-frontend encode into the URL.
+  MERGE_SHA: ${{ github.sha }}
 
 jobs:
   e2e:
@@ -44,7 +48,7 @@ jobs:
           # and wait until the comment body references the current HEAD_SHA.
           # Both URLs are of the form `...--pr-<N>-<shortsha>.<env>` so we
           # filter on the 7-char prefix.
-          SHORT_SHA="${HEAD_SHA::7}"
+          SHORT_SHA="${MERGE_SHA::7}"
           echo "Looking for marker matching SHA prefix: $SHORT_SHA"
           for i in $(seq 1 60); do
             COMMENTS=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[].body' || echo "")
