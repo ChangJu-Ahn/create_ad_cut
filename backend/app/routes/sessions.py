@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Any
@@ -21,6 +22,7 @@ from app.schemas import (
 from app.services import blob, cosmos
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+log = logging.getLogger(__name__)
 
 
 @router.post("", response_model=SessionCreated, status_code=status.HTTP_201_CREATED)
@@ -35,7 +37,12 @@ def list_sessions(limit: int = 50) -> SessionList:
     """Newest-first list of past sessions for the read-only gallery page."""
     limit = max(1, min(limit, 100))
     docs = cosmos.list_sessions(limit)
-    items = [_to_list_item(doc) for doc in docs]
+    items: list[SessionListItem] = []
+    for doc in docs:
+        try:
+            items.append(_to_list_item(doc))
+        except Exception:
+            log.exception("gallery: skipping malformed doc id=%s", doc.get("id"))
     return SessionList(items=items)
 
 
