@@ -80,10 +80,14 @@ def list_sessions(limit: int) -> list[dict[str, Any]]:
     Cross-partition by design (one session = one partition); we keep `limit`
     small (UI default 50) so RU cost stays bounded.
     """
+    # Exclude legacy `type: "post"` docs from earlier board prototype; only
+    # sessions (no `type` field) carry the input/analysis/generations shape
+    # the gallery projection assumes.
     query = (
         f"SELECT TOP {int(limit)} c.id, c.sessionId, c.createdAt, c.updatedAt, "
         "c.input, c.analysis.promptMd AS promptMd, c.generations "
-        "FROM c ORDER BY c.createdAt DESC"
+        "FROM c WHERE NOT IS_DEFINED(c.type) "
+        "ORDER BY c.createdAt DESC"
     )
     return list(
         container().query_items(
