@@ -7,7 +7,7 @@
 #
 # What it sets:
 #   - Required PR review (1 approver)
-#   - Required status checks: ci / backend, ci / frontend
+#   - Required status checks: ci-backend / test, ci-frontend / build
 #   - Dismiss stale reviews on new commits
 #   - Require linear history & block force pushes
 #
@@ -34,8 +34,8 @@ gh api -X PUT "repos/${REPO}/branches/${BRANCH}/protection" \
   "required_status_checks": {
     "strict": true,
     "contexts": [
-      "backend",
-      "frontend"
+      "ci-backend / test",
+      "ci-frontend / build"
     ]
   },
   "enforce_admins": false,

@@ -1,0 +1,105 @@
+name: deploy-backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+concurrency:
+  # Serialize main deploys; cancel an in-flight build if a newer commit lands
+  # so the latest revision is the one that wins traffic.
+  group: deploy-backend-main
+  cancel-in-progress: true
+
+env:
+  AZURE_RG: ${{ vars.AZURE_RG }}
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  ACA_NAME: ${{ vars.ACA_NAME }}
+  IMAGE_NAME: create-ad-cut-backend
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          HAS_CREDS: ${{ secrets.AZURE_CREDENTIALS != '' }}
+        run: |
+          if [ "$HAS_CREDS" = "true" ] && [ -n "$AZURE_RG" ] && [ -n "$ACR_NAME" ] && [ -n "$ACA_NAME" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::Skipping deploy-backend — Azure secrets/variables are not configured. See docs/deployment.md §3."
+            echo "ready=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-deploy:
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: ACR login
+        run: az acr login -n "$ACR_NAME"
+
+      - name: Build & push image
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:main-${SHORT_SHA}"
+          docker build -t "$IMAGE" -f backend/Dockerfile backend
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
+
+      - name: Create new revision and pin 100% traffic
+        run: |
+          # Multiple-revision mode: az containerapp update creates a new
+          # revision but does NOT shift traffic. We then pin 100% by exact
+          # revision name (never latestRevision:true — that would also route
+          # PR preview revisions to prod). Older `main-*` revisions are
+          # deactivated; `pr-*` revisions are left alone (cleanup-pr-preview
+          # handles those).
+          REV_SUFFIX="main-${SHORT_SHA}"
+          NEW_REVISION="${ACA_NAME}--${REV_SUFFIX}"
+
+          az containerapp update \
+            -g "$AZURE_RG" \
+            -n "$ACA_NAME" \
+            --image "$IMAGE" \
+            --revision-suffix "$REV_SUFFIX"
+
+          # Ensure ingress target port matches the FastAPI listener (8000).
+          az containerapp ingress update \
+            -g "$AZURE_RG" \
+            -n "$ACA_NAME" \
+            --type external \
+            --target-port 8000
+
+          az containerapp ingress traffic set \
+            -g "$AZURE_RG" \
+            -n "$ACA_NAME" \
+            --revision-weight "${NEW_REVISION}=100"
+
+          # Deactivate older `--main-` revisions (not the new one, not pr-*).
+          az containerapp revision list \
+            -g "$AZURE_RG" -n "$ACA_NAME" \
+            --query "[?properties.active && name != '${NEW_REVISION}' && contains(name, '--main-')].name" \
+            -o tsv | while read -r rev; do
+              [ -z "$rev" ] && continue
+              echo "Deactivating old main revision: $rev"
+              az containerapp revision deactivate -g "$AZURE_RG" -n "$ACA_NAME" --revision "$rev" || true
+            done
+
+      - name: Show app URL
+        run: |
+          FQDN=$(az containerapp show -g "$AZURE_RG" -n "$ACA_NAME" --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Backend URL: https://$FQDN" >> $GITHUB_STEP_SUMMARY

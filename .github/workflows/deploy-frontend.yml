@@ -1,0 +1,134 @@
+name: deploy-frontend
+
+# Frontend deployments to Azure Static Web Apps.
+# - `push` to main → production environment
+# - `pull_request` (open/sync/close) → SWA's built-in per-PR staging env
+#   (Azure/static-web-apps-deploy handles this automatically when the action
+#   runs on pull_request events).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: deploy-frontend-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  AZURE_RG: ${{ vars.AZURE_RG }}
+  ACA_NAME: ${{ vars.ACA_NAME }}
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          HAS_TOKEN: ${{ secrets.SWA_DEPLOYMENT_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::Skipping deploy-frontend — SWA_DEPLOYMENT_TOKEN secret is not configured. See docs/deployment.md."
+            echo "ready=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-deploy:
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    name: Build & deploy SWA
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Compute PR backend preview URL
+        if: github.event_name == 'pull_request' && github.event.action != 'closed'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HAS_CREDS: ${{ secrets.AZURE_CREDENTIALS != '' }}
+        run: |
+          # Only resolve the preview URL when we have Azure creds. Without
+          # them the build falls back to /api (SWA Linked Backend).
+          if [ "$HAS_CREDS" != "true" ] || [ -z "$AZURE_RG" ] || [ -z "$ACA_NAME" ]; then
+            echo "::warning::No Azure creds — frontend will use relative /api"
+            exit 0
+          fi
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REV_SUFFIX="pr-${PR_NUMBER}-${SHORT_SHA}"
+          echo "PR_REV_SUFFIX=$REV_SUFFIX" >> $GITHUB_ENV
+
+      - name: Resolve ACA env domain
+        if: env.PR_REV_SUFFIX != ''
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set VITE_API_BASE_URL
+        if: env.PR_REV_SUFFIX != ''
+        run: |
+          BASE_FQDN=$(az containerapp show -g "$AZURE_RG" -n "$ACA_NAME" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          ENV_DOMAIN="${BASE_FQDN#${ACA_NAME}.}"
+          PREVIEW_URL="https://${ACA_NAME}--${PR_REV_SUFFIX}.${ENV_DOMAIN}"
+          echo "VITE_API_BASE_URL=$PREVIEW_URL" >> $GITHUB_ENV
+          echo "Frontend will call: $PREVIEW_URL"
+
+      - name: Install & build
+        if: github.event.action != 'closed'
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ env.VITE_API_BASE_URL }}
+        run: |
+          npm ci || npm install
+          npm run build
+
+      - name: Deploy to Azure Static Web Apps
+        id: swa
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          # `upload` on open/sync/push, `close` on PR close so SWA tears down
+          # the per-PR staging environment automatically.
+          action: ${{ github.event.action == 'closed' && 'close' || 'upload' }}
+          # Upload the already-built `dist/` directly. Earlier this used
+          # app_location: "/frontend" + output_location: "dist" + skip_app_build,
+          # which caused SWA to serve the source tree (index.html still pointing
+          # at /src/main.tsx) -> blank white screen. Pointing app_location at
+          # the dist folder is the reliable pattern for pre-built SPAs.
+          app_location: "frontend/dist"
+          skip_app_build: true
+          skip_deploy_on_missing_secrets: true
+
+      - name: Post frontend preview URL to PR
+        if: github.event_name == 'pull_request' && github.event.action != 'closed' && steps.swa.outputs.static_web_app_url != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-preview-frontend
+          message: |
+            <!-- frontend-preview-url:${{ steps.swa.outputs.static_web_app_url }} -->
+            ### Frontend preview (SWA staging)
+
+            | | |
+            |---|---|
+            | URL | ${{ steps.swa.outputs.static_web_app_url }} |
+            | Backend | `VITE_API_BASE_URL=${{ env.VITE_API_BASE_URL || '(default /api)' }}` |
