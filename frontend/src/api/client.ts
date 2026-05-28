@@ -10,8 +10,11 @@
  * exercise the PR's backend before merge.
  */
 
-// Absolute URL (with trailing path) when overridden, otherwise relative `/api`.
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api";
+// Absolute URL (with /api suffix) when overridden, otherwise relative `/api`.
+// The backend mounts every route under `/api`; SWA Linked Backend forwards
+// `/api/*` without stripping the prefix, so we always include it.
+const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "");
+const API_BASE = RAW_BASE ? `${RAW_BASE}/api` : "/api";
 
 export type BuiltInMode = "lookbook" | "front" | "side" | "back";
 export type ShotMode = BuiltInMode | "custom";
