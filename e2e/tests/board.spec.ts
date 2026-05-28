@@ -12,6 +12,9 @@ mkdirSync(SCREENSHOT_DIR, { recursive: true });
 // same workflow exercises both.
 
 test("platform reachable + board scenario when present", async ({ page }) => {
+    // Allow retries below to exceed the default 60s budget.
+    test.setTimeout(180_000);
+
     // Surface SPA console errors so a blank white screen fails the test
     // instead of passing on a 200 HTML response.
     const consoleErrors: string[] = [];
@@ -21,17 +24,41 @@ test("platform reachable + board scenario when present", async ({ page }) => {
     page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
 
     // 1) Landing page — must render the app shell, not just return 200.
-    const resp = await page.goto("/", { waitUntil: "networkidle" });
-    expect(resp?.ok(), `landing page returned ${resp?.status()}`).toBeTruthy();
-
-    // The React app always renders the brand link in the top bar. If this
-    // is not visible, the SPA failed to mount (blank white screen).
-    await expect(
-        page.getByRole("link", { name: /create-ad-cut/i }),
-        `app shell did not render. console errors: ${consoleErrors.join(" | ") || "(none)"}`
-    ).toBeVisible({ timeout: 10_000 });
+    // SWA staging can serve a stale index.html that references bundle hashes
+    // not yet uploaded for ~30-60s after deploy-frontend completes. Retry
+    // until the shell mounts or budget runs out.
+    const brand = page.getByRole("link", { name: /create-ad-cut/i });
+    let landed = false;
+    let lastErrors: string[] = [];
+    for (let attempt = 1; attempt <= 6; attempt++) {
+        consoleErrors.length = 0;
+        const resp = await page.goto("/", { waitUntil: "networkidle" });
+        if (resp?.ok()) {
+            const visible = await brand.isVisible({ timeout: 5_000 }).catch(() => false);
+            if (visible) {
+                landed = true;
+                break;
+            }
+        }
+        lastErrors = [...consoleErrors];
+        console.log(`landing attempt ${attempt} failed (${lastErrors.length} console errors), retrying in 15s`);
+        await page.waitForTimeout(15_000);
+    }
+    expect(
+        landed,
+        `app shell did not render after 6 attempts. last console errors: ${lastErrors.join(" | ") || "(none)"}`
+    ).toBeTruthy();
 
     await page.screenshot({ path: join(SCREENSHOT_DIR, "01-landing.png"), fullPage: true });
+
+    // 1b) Click the header board button to verify discoverability — only if
+    // data-testid=nav-board is present (added alongside the board feature).
+    const navBoard = page.getByTestId("nav-board");
+    if (await navBoard.isVisible().catch(() => false)) {
+        await navBoard.click();
+        await page.waitForURL(/\/board$/, { timeout: 5_000 }).catch(() => undefined);
+        await page.screenshot({ path: join(SCREENSHOT_DIR, "01b-board-from-nav.png"), fullPage: true });
+    }
 
     // 2) Board scenario — only if the page is shipped with data-testid hooks.
     const boardResp = await page.goto("/board", { waitUntil: "networkidle" });
