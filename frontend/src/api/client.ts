@@ -10,8 +10,15 @@
  * exercise the PR's backend before merge.
  */
 
-// Absolute URL (with trailing path) when overridden, otherwise relative `/api`.
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api";
+// Absolute URL override for previews; if a bare backend origin is provided,
+// append `/api` so route paths stay consistent.
+const rawApiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+const normalizedApiBase = rawApiBase ? rawApiBase.replace(/\/+$/, "") : "";
+const API_BASE = normalizedApiBase
+    ? normalizedApiBase.endsWith("/api")
+        ? normalizedApiBase
+        : `${normalizedApiBase}/api`
+    : "/api";
 
 export type BuiltInMode = "lookbook" | "front" | "side" | "back";
 export type ShotMode = BuiltInMode | "custom";
