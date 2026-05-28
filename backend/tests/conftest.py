@@ -67,6 +67,16 @@ def patch_externals(monkeypatch: pytest.MonkeyPatch, fake_state: dict[str, Any])
     monkeypatch.setattr(cosmos, "upsert_session", _upsert_session)
     monkeypatch.setattr(cosmos, "now_iso", lambda: "2026-05-01T00:00:02+00:00")
 
+    def _list_sessions(limit: int = 20, offset: int = 0) -> list[dict[str, Any]]:
+        ordered = sorted(
+            fake_state["sessions"].values(),
+            key=lambda d: d.get("createdAt") or "",
+            reverse=True,
+        )
+        return ordered[offset : offset + limit]
+
+    monkeypatch.setattr(cosmos, "list_sessions", _list_sessions)
+
     # ---- blob ----
     def _ensure_container() -> None:
         return None

@@ -48,6 +48,22 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def list_sessions(limit: int = 20, offset: int = 0) -> list[dict[str, Any]]:
+    """Return sessions sorted by ``createdAt`` descending with offset pagination.
+
+    This is a cross-partition query (one session per ``/sessionId`` partition),
+    intended for the small history Gallery view. ``limit`` is capped at 100 by
+    the route layer.
+    """
+    query = (
+        "SELECT * FROM c ORDER BY c.createdAt DESC "
+        f"OFFSET {int(offset)} LIMIT {int(limit)}"
+    )
+    return list(
+        container().query_items(query=query, enable_cross_partition_query=True)
+    )
+
+
 def get_session(session_id: str) -> dict[str, Any] | None:
     try:
         return container().read_item(item=session_id, partition_key=session_id)
