@@ -40,7 +40,6 @@ fi
   # azd env get-values prints `KEY="value"` per line. Pipe through a tiny
   # awk filter to drop quotes and keep only the names we care about.
   azd env get-values | awk -F'=' '
-    /^BACKEND_API_KEY=/        { print "BACKEND_API_KEY=" substr($0, index($0,"=")+1); next }
     /^AZURE_OPENAI_ENDPOINT=/  { print "AZURE_OPENAI_ENDPOINT=" substr($0, index($0,"=")+1); next }
     /^AZURE_OPENAI_ANALYSIS_DEPLOYMENT=/ { print "AZURE_OPENAI_ANALYSIS_DEPLOYMENT=" substr($0, index($0,"=")+1); next }
     /^AZURE_OPENAI_IMAGE_DEPLOYMENT=/    { print "AZURE_OPENAI_IMAGE_DEPLOYMENT=" substr($0, index($0,"=")+1); next }

@@ -25,9 +25,6 @@ param userAssignedIdentityId string
 param userAssignedIdentityClientId string
 
 @secure()
-param backendApiKey string
-
-@secure()
 param azureOpenAiEndpoint string
 
 param azureOpenAiApiVersion string
@@ -81,7 +78,6 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
                 }
             ]
             secrets: [
-                { name: 'backend-api-key', value: backendApiKey }
                 { name: 'aoai-endpoint', value: azureOpenAiEndpoint }
             ]
         }
@@ -92,7 +88,6 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
                     image: containerImage
                     resources: { cpu: json('1.0'), memory: '2Gi' }
                     env: [
-                        { name: 'BACKEND_API_KEY', secretRef: 'backend-api-key' }
                         { name: 'AZURE_OPENAI_ENDPOINT', secretRef: 'aoai-endpoint' }
                         { name: 'AZURE_OPENAI_API_VERSION', value: azureOpenAiApiVersion }
                         { name: 'AZURE_OPENAI_ANALYSIS_DEPLOYMENT', value: azureOpenAiAnalysisDeployment }

@@ -60,11 +60,6 @@ param azureOpenAiImageModelVersion string = '2026-04-21'
 param azureOpenAiImageSku string = 'GlobalStandard'
 param azureOpenAiImageCapacity int = 4
 
-// ---- App secret -----------------------------------------------------------
-@secure()
-@description('Value clients must send in the X-API-Key header. Empty = generate deterministically per environment.')
-param backendApiKey string = ''
-
 // ---- Naming ---------------------------------------------------------------
 var abbrs = loadJsonContent('./abbreviations.json')
 var token = uniqueString(subscription().id, resourceGroup().id, environmentName)
@@ -82,10 +77,6 @@ var cosmosName = toLower('${abbrs.cosmosDbAccount}-${environmentName}-${token}')
 var aoaiName = toLower('${abbrs.openAiAccount}-${environmentName}-${token}')
 var caName = '${abbrs.containerApp}-${environmentName}-${token}'
 var swaName = '${abbrs.staticWebApp}-${environmentName}-${token}'
-
-var effectiveBackendApiKey = empty(backendApiKey)
-    ? uniqueString(subscription().id, resourceGroup().id, environmentName, 'backend-api-key')
-    : backendApiKey
 
 // ---- Identity (created first so AcrPull/RBAC can target a known principal)
 module uami 'modules/uami.bicep' = {
@@ -258,7 +249,6 @@ module backend 'modules/containerapp.bicep' = {
         containerRegistryLoginServer: acr.outputs.loginServer
         userAssignedIdentityId: uami.outputs.id
         userAssignedIdentityClientId: uami.outputs.clientId
-        backendApiKey: effectiveBackendApiKey
         azureOpenAiEndpoint: openai.outputs.endpoint
         azureOpenAiApiVersion: azureOpenAiApiVersion
         azureOpenAiAnalysisDeployment: openai.outputs.analysisDeploymentName
@@ -296,7 +286,6 @@ output AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID string = uami.outputs.clientId
 
 output BACKEND_NAME string = backend.outputs.name
 output BACKEND_FQDN string = backend.outputs.fqdn
-output BACKEND_API_KEY string = effectiveBackendApiKey
 
 output AZURE_OPENAI_NAME string = openai.outputs.name
 output AZURE_OPENAI_ENDPOINT string = openai.outputs.endpoint

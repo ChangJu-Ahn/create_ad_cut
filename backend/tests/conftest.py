@@ -15,7 +15,6 @@ import pytest
 
 # --- Env vars required by app.config.Settings -------------------------------
 os.environ.setdefault("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
-os.environ.setdefault("AZURE_OPENAI_API_KEY", "test-aoai-key")
 os.environ.setdefault("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
 os.environ.setdefault("AZURE_OPENAI_ANALYSIS_DEPLOYMENT", "gpt-5.5")
 os.environ.setdefault("AZURE_OPENAI_IMAGE_DEPLOYMENT", "gpt-image-2")

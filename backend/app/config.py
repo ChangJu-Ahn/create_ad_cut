@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     All Azure resources (AOAI, Storage, Cosmos) are assumed to be
     pre-provisioned. Storage and Cosmos use AAD (DefaultAzureCredential):
     locally that resolves to the developer's `az login` identity, and in
-    Container Apps to the system-assigned managed identity. Azure OpenAI
-    keeps API-key auth so the AOAI resource can live in another sub.
+    Container Apps to the user-assigned managed identity. Azure OpenAI also
+    uses AAD token auth via DefaultAzureCredential.
     """
 
     model_config = SettingsConfigDict(
