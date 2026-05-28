@@ -72,3 +72,54 @@ def create_session(session_id: str) -> dict[str, Any]:
         "generations": [],
     }
     return container().create_item(doc)
+
+
+# ---- Board posts ---------------------------------------------------------
+#
+# Posts share the `sessions` container to avoid extra infra. Each post doc
+# stores its `postId` in both `id` and the `sessionId` partition-key field
+# (so reads/writes stay single-partition) and is tagged with `type="post"`
+# so list queries can skip session documents.
+
+_POST_TYPE = "post"
+
+
+def create_board_post(post_id: str, title: str, body: str, author: str | None) -> dict[str, Any]:
+    now = now_iso()
+    doc = {
+        "id": post_id,
+        "sessionId": post_id,
+        "type": _POST_TYPE,
+        "postId": post_id,
+        "title": title,
+        "body": body,
+        "author": author,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    return container().create_item(doc)
+
+
+def get_board_post(post_id: str) -> dict[str, Any] | None:
+    try:
+        doc = container().read_item(item=post_id, partition_key=post_id)
+    except CosmosResourceNotFoundError:
+        return None
+    if doc.get("type") != _POST_TYPE:
+        return None
+    return doc
+
+
+def list_board_posts(limit: int = 20) -> list[dict[str, Any]]:
+    query = (
+        "SELECT c.postId, c.title, c.author, c.body, c.createdAt "
+        "FROM c WHERE c.type = @type ORDER BY c.createdAt DESC OFFSET 0 LIMIT @limit"
+    )
+    params = [{"name": "@type", "value": _POST_TYPE}, {"name": "@limit", "value": int(limit)}]
+    return list(
+        container().query_items(
+            query=query,
+            parameters=params,
+            enable_cross_partition_query=True,
+        )
+    )

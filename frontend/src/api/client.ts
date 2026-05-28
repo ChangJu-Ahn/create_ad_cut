@@ -174,3 +174,47 @@ export function getSession(sessionId: string) {
 export function listStyleHeaders() {
     return request<StyleHeaderInfo[]>("/style-headers");
 }
+
+// ---- Board -----------------------------------------------------------------
+
+export interface BoardPost {
+    postId: string;
+    title: string;
+    body: string;
+    author: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface BoardPostListItem {
+    postId: string;
+    title: string;
+    author: string | null;
+    createdAt: string;
+    excerpt: string;
+}
+
+export interface BoardPostList {
+    items: BoardPostListItem[];
+}
+
+export interface BoardPostInput {
+    title: string;
+    body: string;
+    author?: string;
+}
+
+export function listBoardPosts(limit = 20) {
+    return request<BoardPostList>(`/board?limit=${encodeURIComponent(limit)}`);
+}
+
+export function getBoardPost(postId: string) {
+    return request<BoardPost>(`/board/${encodeURIComponent(postId)}`);
+}
+
+export function createBoardPost(input: BoardPostInput) {
+    return request<BoardPost>("/board", {
+        method: "POST",
+        body: JSON.stringify(input),
+    });
+}

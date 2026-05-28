@@ -67,6 +67,40 @@ def patch_externals(monkeypatch: pytest.MonkeyPatch, fake_state: dict[str, Any])
     monkeypatch.setattr(cosmos, "upsert_session", _upsert_session)
     monkeypatch.setattr(cosmos, "now_iso", lambda: "2026-05-01T00:00:02+00:00")
 
+    # ---- cosmos: board posts (in-memory) ----
+    fake_state.setdefault("posts", {})
+
+    def _create_board_post(
+        post_id: str, title: str, body: str, author: str | None
+    ) -> dict[str, Any]:
+        now = "2026-05-01T00:00:02+00:00"
+        doc = {
+            "id": post_id,
+            "sessionId": post_id,
+            "type": "post",
+            "postId": post_id,
+            "title": title,
+            "body": body,
+            "author": author,
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        fake_state["posts"][post_id] = doc
+        return doc
+
+    def _get_board_post(post_id: str) -> dict[str, Any] | None:
+        return fake_state["posts"].get(post_id)
+
+    def _list_board_posts(limit: int = 20) -> list[dict[str, Any]]:
+        docs = sorted(
+            fake_state["posts"].values(), key=lambda d: d["createdAt"], reverse=True
+        )
+        return docs[:limit]
+
+    monkeypatch.setattr(cosmos, "create_board_post", _create_board_post)
+    monkeypatch.setattr(cosmos, "get_board_post", _get_board_post)
+    monkeypatch.setattr(cosmos, "list_board_posts", _list_board_posts)
+
     # ---- blob ----
     def _ensure_container() -> None:
         return None

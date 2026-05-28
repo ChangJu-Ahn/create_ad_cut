@@ -1,4 +1,6 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, NavLink, Route, Routes } from "react-router-dom";
+import BoardListPage from "./pages/BoardListPage";
+import BoardPostPage from "./pages/BoardPostPage";
 import GeneratePage from "./pages/GeneratePage";
 import ResultsPage from "./pages/ResultsPage";
 import ReviewPage from "./pages/ReviewPage";
@@ -14,6 +16,16 @@ export default function App() {
                         <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-900 text-white text-xs">AI</span>
                         create-ad-cut
                     </Link>
+                    <nav className="flex items-center gap-4 text-sm">
+                        <NavLink
+                            to="/board"
+                            className={({ isActive }) =>
+                                `transition ${isActive ? "text-slate-900 font-semibold" : "text-slate-500 hover:text-slate-900"}`
+                            }
+                        >
+                            게시판
+                        </NavLink>
+                    </nav>
                 </div>
             </header>
 
@@ -24,6 +36,8 @@ export default function App() {
                     <Route path="/sessions/:sessionId/review" element={<ReviewPage />} />
                     <Route path="/sessions/:sessionId/generate" element={<GeneratePage />} />
                     <Route path="/sessions/:sessionId/results" element={<ResultsPage />} />
+                    <Route path="/board" element={<BoardListPage />} />
+                    <Route path="/board/:postId" element={<BoardPostPage />} />
                 </Routes>
             </main>
 

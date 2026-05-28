@@ -135,6 +135,39 @@ class GenerateOut(BaseModel):
     results: list[GenerationResult]
 
 
+class BoardPostIn(BaseModel):
+    """Minimum fields required to create a board post."""
+
+    title: str = Field(..., min_length=1, max_length=200, description="Post title.")
+    body: str = Field(..., min_length=1, max_length=20_000, description="Post body (plain text or markdown).")
+    author: str | None = Field(None, max_length=80, description="Optional display name of the author.")
+
+
+class BoardPostOut(BaseModel):
+    """Full board post returned by create + detail endpoints."""
+
+    postId: str
+    title: str
+    body: str
+    author: str | None = None
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class BoardPostListItem(BaseModel):
+    """Compact projection used by the list endpoint."""
+
+    postId: str
+    title: str
+    author: str | None = None
+    createdAt: datetime
+    excerpt: str = Field("", description="First ~120 chars of body, useful for the list UI.")
+
+
+class BoardPostList(BaseModel):
+    items: list[BoardPostListItem]
+
+
 class SessionView(BaseModel):
     sessionId: str
     createdAt: datetime
