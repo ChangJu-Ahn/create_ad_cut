@@ -194,6 +194,8 @@ async def _render_one_for_job(
         effective_prompt_md = prompt_md if item.includeAnalysisPrompt else ""
 
         aoai_started = asyncio.get_event_loop().time()
+        # gpt-image-2 validates filename extension against the actual image bytes.
+        ext = {"image/jpeg": "jpg", "image/webp": "webp"}.get(reference_content_type, "png")
         image_bytes = await asyncio.to_thread(
             aoai_image.render_image,
             effective_prompt_md,
@@ -201,7 +203,7 @@ async def _render_one_for_job(
             header,
             use_reference,
             scene_compose,
-            "input.png",
+            f"input.{ext}",
             reference_content_type,
         )
         aoai_secs = asyncio.get_event_loop().time() - aoai_started
