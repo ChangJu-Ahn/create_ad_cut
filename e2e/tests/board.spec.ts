@@ -5,28 +5,24 @@ import { join } from "node:path";
 const SCREENSHOT_DIR = join(process.cwd(), "screenshots");
 mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
-// This test is intentionally tolerant: it always captures the landing page
-// (proves SWA + ACA are reachable end-to-end) and ADDITIONALLY runs a board
-// feature scenario when the /board page exposes the agreed data-testid
-// contract. The board PR adds those test ids; the platform PR doesn't —
-// same workflow exercises both.
+// Always capture the landing page (proves SWA + ACA wiring) and ADDITIONALLY
+// drive the read-only gallery (/gallery) when its hooks are present.
+//
+// The gallery is purely a read view backed by GET /api/sessions. To prove
+// persistence end-to-end we first POST a new session against the same
+// backend the SWA bundle was built against, then visit /gallery and assert
+// that session id is rendered.
 
-test("platform reachable + board scenario when present", async ({ page }) => {
-    // Allow retries below to exceed the default 60s budget.
+test("platform reachable + gallery shows persisted sessions", async ({ page, request }) => {
     test.setTimeout(180_000);
 
-    // Surface SPA console errors so a blank white screen fails the test
-    // instead of passing on a 200 HTML response.
     const consoleErrors: string[] = [];
     page.on("console", (msg) => {
         if (msg.type() === "error") consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
 
-    // 1) Landing page — must render the app shell, not just return 200.
-    // SWA staging can serve a stale index.html that references bundle hashes
-    // not yet uploaded for ~30-60s after deploy-frontend completes. Retry
-    // until the shell mounts or budget runs out.
+    // 1) Landing — retry to ride out SWA bundle propagation lag.
     const brand = page.getByRole("link", { name: /create-ad-cut/i });
     let landed = false;
     let lastErrors: string[] = [];
@@ -41,62 +37,57 @@ test("platform reachable + board scenario when present", async ({ page }) => {
             }
         }
         lastErrors = [...consoleErrors];
-        console.log(`landing attempt ${attempt} failed (${lastErrors.length} console errors), retrying in 15s`);
+        console.log(`landing attempt ${attempt} failed, retrying in 15s`);
         await page.waitForTimeout(15_000);
     }
     expect(
         landed,
         `app shell did not render after 6 attempts. last console errors: ${lastErrors.join(" | ") || "(none)"}`
     ).toBeTruthy();
-
     await page.screenshot({ path: join(SCREENSHOT_DIR, "01-landing.png"), fullPage: true });
 
-    // 1b) Click the header board button to verify discoverability — only if
-    // data-testid=nav-board is present (added alongside the board feature).
-    const navBoard = page.getByTestId("nav-board");
-    if (await navBoard.isVisible().catch(() => false)) {
-        await navBoard.click();
-        await page.waitForURL(/\/board$/, { timeout: 5_000 }).catch(() => undefined);
-        await page.screenshot({ path: join(SCREENSHOT_DIR, "01b-board-from-nav.png"), fullPage: true });
-    }
-
-    // 2) Board scenario — only if the page is shipped with data-testid hooks.
-    const boardResp = await page.goto("/board", { waitUntil: "networkidle" });
-    if (!boardResp?.ok()) {
+    // 2) Skip the gallery scenario unless the page is shipped.
+    const navGallery = page.getByTestId("nav-gallery");
+    if (!(await navGallery.isVisible().catch(() => false))) {
         test.info().annotations.push({
             type: "skip-reason",
-            description: `/board returned ${boardResp?.status()} — skipping board scenario`,
+            description: "data-testid=nav-gallery not present — gallery feature not shipped on this branch",
         });
         return;
     }
 
-    const author = page.getByTestId("post-author");
-    if (!(await author.isVisible().catch(() => false))) {
+    // 3) Seed a session against the per-PR ACA backend so the gallery has
+    // at least one card to show. BACKEND_URL is the bare ACA host; the
+    // backend mounts every route under /api.
+    const backend = process.env.BACKEND_URL;
+    if (!backend || backend === "(none)") {
         test.info().annotations.push({
             type: "skip-reason",
-            description: "data-testid=post-author not found — skipping board scenario",
+            description: "BACKEND_URL not set — cannot seed gallery",
         });
         return;
     }
+    const create = await request.post(`${backend.replace(/\/$/, "")}/api/sessions`);
+    expect(create.ok(), `seed POST /api/sessions failed: ${create.status()}`).toBeTruthy();
+    const created = await create.json();
+    const seededId = (created.sessionId as string) ?? "";
+    expect(seededId).toMatch(/^[a-f0-9]{8,}$/);
+    const seededShort = seededId.slice(0, 8);
 
-    await page.screenshot({ path: join(SCREENSHOT_DIR, "02-board-empty.png"), fullPage: true });
+    // 4) Enter the gallery via the header button — proves discoverability.
+    await navGallery.click();
+    await page.waitForURL(/\/gallery$/, { timeout: 5_000 }).catch(() => undefined);
 
-    const stamp = Date.now();
-    const content = `e2e post ${stamp}`;
-
-    await author.fill(`tester-${stamp}`);
-    await page.getByTestId("post-content").fill(content);
-    await page.screenshot({ path: join(SCREENSHOT_DIR, "03-board-filled.png"), fullPage: true });
-
-    await page.getByTestId("post-submit").click();
-
-    const list = page.getByTestId("post-list");
+    // The gallery may take a few moments to fetch /api/sessions; wait for
+    // either at least one card or the seeded id to appear.
+    const list = page.getByTestId("gallery-list");
     await expect(list).toBeVisible();
-    await expect(list.getByText(content)).toBeVisible({ timeout: 15_000 });
-    await page.screenshot({ path: join(SCREENSHOT_DIR, "04-board-after-submit.png"), fullPage: true });
+    await expect(list.getByText(seededShort)).toBeVisible({ timeout: 15_000 });
+    await page.screenshot({ path: join(SCREENSHOT_DIR, "02-gallery.png"), fullPage: true });
 
-    // Reload to verify the post was persisted (Read path).
+    // 5) Reload — verifies the gallery still reads the same Cosmos state
+    // (no client-side cache, no input form).
     await page.reload({ waitUntil: "networkidle" });
-    await expect(page.getByTestId("post-list").getByText(content)).toBeVisible({ timeout: 15_000 });
-    await page.screenshot({ path: join(SCREENSHOT_DIR, "05-board-after-reload.png"), fullPage: true });
+    await expect(page.getByTestId("gallery-list").getByText(seededShort)).toBeVisible({ timeout: 15_000 });
+    await page.screenshot({ path: join(SCREENSHOT_DIR, "03-gallery-after-reload.png"), fullPage: true });
 });

@@ -101,13 +101,17 @@ export interface SessionView {
     jobs: GenerateJobOut[];
 }
 
-export interface BoardPost {
-    id: string;
-    type: "post";
+export interface SessionListItem {
     sessionId: string;
-    author: string;
-    content: string;
     createdAt: string;
+    updatedAt: string;
+    inputImageUrl: string | null;
+    promptMd: string | null;
+    generations: GenerationResult[];
+}
+
+export interface SessionList {
+    items: SessionListItem[];
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -187,13 +191,6 @@ export function listStyleHeaders() {
     return request<StyleHeaderInfo[]>("/style-headers");
 }
 
-export function createPost(author: string, content: string) {
-    return request<BoardPost>("/board/posts", {
-        method: "POST",
-        body: JSON.stringify({ author, content }),
-    });
-}
-
-export function listPosts(limit = 50) {
-    return request<BoardPost[]>(`/board/posts?limit=${limit}`);
+export function listSessions(limit = 50) {
+    return request<SessionList>(`/sessions?limit=${limit}`);
 }

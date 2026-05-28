@@ -32,7 +32,7 @@ os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
 @pytest.fixture
 def fake_state() -> dict[str, Any]:
     """Shared state across cosmos / blob / aoai fakes inside a single test."""
-    return {"sessions": {}, "posts": {}, "blobs": {}}
+    return {"sessions": {}, "blobs": {}}
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +44,6 @@ def patch_externals(monkeypatch: pytest.MonkeyPatch, fake_state: dict[str, Any])
         now = "2026-05-01T00:00:00+00:00"
         doc = {
             "id": session_id,
-            "type": "session",
             "sessionId": session_id,
             "createdAt": now,
             "updatedAt": now,
@@ -56,33 +55,39 @@ def patch_externals(monkeypatch: pytest.MonkeyPatch, fake_state: dict[str, Any])
         return doc
 
     def _get_session(session_id: str) -> dict[str, Any] | None:
-        doc = fake_state["sessions"].get(session_id)
-        if doc is None or doc.get("type") not in (None, "session"):
-            return None
-        return doc
+        return fake_state["sessions"].get(session_id)
 
     def _upsert_session(doc: dict[str, Any]) -> dict[str, Any]:
         doc["updatedAt"] = "2026-05-01T00:00:01+00:00"
         fake_state["sessions"][doc["sessionId"]] = doc
         return doc
 
-    def _create_post(doc: dict[str, Any]) -> dict[str, Any]:
-        fake_state["posts"][doc["id"]] = doc
-        return doc
-
-    def _list_posts(limit: int) -> list[dict[str, Any]]:
-        posts = sorted(
-            fake_state["posts"].values(),
-            key=lambda p: p["createdAt"],
+    def _list_sessions(limit: int) -> list[dict[str, Any]]:
+        sessions = sorted(
+            fake_state["sessions"].values(),
+            key=lambda s: s["createdAt"],
             reverse=True,
         )
-        return posts[:limit]
+        projected = []
+        for s in sessions[:limit]:
+            analysis = s.get("analysis") or {}
+            projected.append(
+                {
+                    "id": s["id"],
+                    "sessionId": s["sessionId"],
+                    "createdAt": s["createdAt"],
+                    "updatedAt": s["updatedAt"],
+                    "input": s.get("input"),
+                    "promptMd": analysis.get("promptMd"),
+                    "generations": s.get("generations") or [],
+                }
+            )
+        return projected
 
     monkeypatch.setattr(cosmos, "create_session", _create_session)
     monkeypatch.setattr(cosmos, "get_session", _get_session)
     monkeypatch.setattr(cosmos, "upsert_session", _upsert_session)
-    monkeypatch.setattr(cosmos, "create_post", _create_post)
-    monkeypatch.setattr(cosmos, "list_posts", _list_posts)
+    monkeypatch.setattr(cosmos, "list_sessions", _list_sessions)
     monkeypatch.setattr(cosmos, "now_iso", lambda: "2026-05-01T00:00:02+00:00")
 
     # ---- blob ----
