@@ -27,6 +27,7 @@ env:
   AZURE_RG: ${{ vars.AZURE_RG }}
   ACR_NAME: ${{ vars.ACR_NAME }}
   ACA_NAME: ${{ vars.ACA_NAME }}
+  SWA_NAME: ${{ vars.SWA_NAME }}
   IMAGE_NAME: create-ad-cut-backend
   PR_NUMBER: ${{ github.event.pull_request.number }}
 
@@ -97,13 +98,17 @@ jobs:
 
       - name: Deploy SWA staging
         id: swa
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: upload
-          app_location: "frontend/dist"
-          skip_app_build: true
+        env:
+          SWA_CLI_DEPLOYMENT_TOKEN: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+        run: |
+          npm install -g @azure/static-web-apps-cli
+          OUTPUT=$(swa deploy frontend/dist \
+            --deployment-token "$SWA_CLI_DEPLOYMENT_TOKEN" \
+            --env "pr-${PR_NUMBER}" \
+            --no-interactive 2>&1) || true
+          echo "$OUTPUT"
+          URL=$(echo "$OUTPUT" | grep -oE 'https?://[a-zA-Z0-9.-]+\.azurestaticapps\.net[^ ]*' | head -1)
+          echo "static_web_app_url=${URL}" >> $GITHUB_OUTPUT
 
       - name: Install Playwright
         working-directory: e2e
@@ -220,10 +225,13 @@ jobs:
                 az containerapp revision deactivate -g "$AZURE_RG" -n "$ACA_NAME" --revision "$r" || true
               done
       - name: Close SWA staging environment
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: close
-          app_location: "frontend/dist"
-          skip_app_build: true
+        run: |
+          # Use SWA_NAME var if set; otherwise discover the first SWA in the resource group.
+          TARGET="${SWA_NAME:-$(az staticwebapp list -g "$AZURE_RG" --query "[0].name" -o tsv 2>/dev/null)}"
+          if [ -n "$TARGET" ]; then
+            az staticwebapp environment delete \
+              --name "$TARGET" \
+              --resource-group "$AZURE_RG" \
+              --environment-name "pr-${PR_NUMBER}" \
+              --yes 2>/dev/null || true
+          fi
