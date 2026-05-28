@@ -67,6 +67,40 @@ def patch_externals(monkeypatch: pytest.MonkeyPatch, fake_state: dict[str, Any])
     monkeypatch.setattr(cosmos, "upsert_session", _upsert_session)
     monkeypatch.setattr(cosmos, "now_iso", lambda: "2026-05-01T00:00:02+00:00")
 
+    def _list_generations(limit: int, offset: int) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for sess in fake_state["sessions"].values():
+            for g in sess.get("generations") or []:
+                rows.append(
+                    {
+                        "sessionId": sess["sessionId"],
+                        "id": g["id"],
+                        "mode": g["mode"],
+                        "label": g.get("label", g["mode"]),
+                        "blob": g["blob"],
+                        "promptHeader": g.get("promptHeader", ""),
+                        "usedPrompt": g.get("usedPrompt", ""),
+                        "createdAt": g["createdAt"],
+                    }
+                )
+        rows.sort(key=lambda r: r["createdAt"], reverse=True)
+        return rows[offset : offset + limit]
+
+    def _find_generation(generation_id: str) -> dict[str, Any] | None:
+        for sess in fake_state["sessions"].values():
+            for g in sess.get("generations") or []:
+                if g["id"] == generation_id:
+                    return {
+                        "sessionId": sess["sessionId"],
+                        "input": sess.get("input"),
+                        "analysis": sess.get("analysis"),
+                        "generation": g,
+                    }
+        return None
+
+    monkeypatch.setattr(cosmos, "list_generations", _list_generations)
+    monkeypatch.setattr(cosmos, "find_generation", _find_generation)
+
     # ---- blob ----
     def _ensure_container() -> None:
         return None

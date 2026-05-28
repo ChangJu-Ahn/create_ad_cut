@@ -143,3 +143,41 @@ class SessionView(BaseModel):
     promptMd: str | None = None
     generations: list[GenerationResult] = []
     jobs: list[GenerateJobOut] = []
+
+
+# ---- Gallery -------------------------------------------------------------
+
+
+class GalleryItem(BaseModel):
+    """Lightweight gallery card. Lists are paginated, newest first."""
+
+    id: str = Field(..., description="Generation id, stable across the parent session.")
+    sessionId: str = Field(..., description="Parent session id — use it to deep-link back.")
+    mode: ShotMode
+    label: str
+    imageUrl: str = Field(..., description="Time-limited SAS URL of the generated image (thumbnail-friendly).")
+    createdAt: datetime
+
+
+class GalleryListOut(BaseModel):
+    """Page of gallery items plus the offset to request next page (null at end)."""
+
+    items: list[GalleryItem]
+    limit: int
+    offset: int
+    nextOffset: int | None = None
+
+
+class GalleryDetail(BaseModel):
+    """Single generation with the session context needed for the detail view."""
+
+    id: str
+    sessionId: str
+    mode: ShotMode
+    label: str
+    imageUrl: str
+    promptHeader: str = ""
+    usedPrompt: str = ""
+    createdAt: datetime
+    inputImageUrl: str | None = None
+    promptMd: str | None = None

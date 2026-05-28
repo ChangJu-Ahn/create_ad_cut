@@ -60,6 +60,51 @@ def upsert_session(doc: dict[str, Any]) -> dict[str, Any]:
     return container().upsert_item(doc)
 
 
+def list_generations(limit: int, offset: int) -> list[dict[str, Any]]:
+    """List embedded generations across all sessions, newest first.
+
+    Returns one row per generation with the parent `sessionId` denormalised
+    onto each row so the caller can build SAS URLs and link back to the
+    session. Uses a cross-partition `JOIN` over the embedded array.
+    """
+    query = (
+        "SELECT c.sessionId, g.id AS id, g.mode, g.label, g.blob, "
+        "g.promptHeader, g.usedPrompt, g.createdAt "
+        "FROM c JOIN g IN c.generations "
+        "ORDER BY g.createdAt DESC "
+        "OFFSET @offset LIMIT @limit"
+    )
+    items = container().query_items(
+        query=query,
+        parameters=[
+            {"name": "@offset", "value": int(offset)},
+            {"name": "@limit", "value": int(limit)},
+        ],
+        enable_cross_partition_query=True,
+    )
+    return list(items)
+
+
+def find_generation(generation_id: str) -> dict[str, Any] | None:
+    """Find a single embedded generation by id, returning the parent context.
+
+    Result shape: ``{"sessionId", "input", "analysis", "generation": {...}}``.
+    Returns ``None`` if no generation with that id exists in any session.
+    """
+    query = (
+        "SELECT c.sessionId, c.input, c.analysis, g AS generation "
+        "FROM c JOIN g IN c.generations WHERE g.id = @gid"
+    )
+    items = list(
+        container().query_items(
+            query=query,
+            parameters=[{"name": "@gid", "value": generation_id}],
+            enable_cross_partition_query=True,
+        )
+    )
+    return items[0] if items else None
+
+
 def create_session(session_id: str) -> dict[str, Any]:
     now = now_iso()
     doc = {

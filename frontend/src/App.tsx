@@ -1,4 +1,5 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, NavLink, Route, Routes } from "react-router-dom";
+import GalleryPage from "./pages/GalleryPage";
 import GeneratePage from "./pages/GeneratePage";
 import ResultsPage from "./pages/ResultsPage";
 import ReviewPage from "./pages/ReviewPage";
@@ -14,6 +15,25 @@ export default function App() {
                         <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-900 text-white text-xs">AI</span>
                         create-ad-cut
                     </Link>
+                    <nav className="flex items-center gap-1 text-sm">
+                        <NavLink
+                            to="/"
+                            end
+                            className={({ isActive }) =>
+                                `px-3 py-1.5 rounded-lg transition ${isActive ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`
+                            }
+                        >
+                            새로 만들기
+                        </NavLink>
+                        <NavLink
+                            to="/gallery"
+                            className={({ isActive }) =>
+                                `px-3 py-1.5 rounded-lg transition ${isActive ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`
+                            }
+                        >
+                            Gallery
+                        </NavLink>
+                    </nav>
                 </div>
             </header>
 
@@ -21,6 +41,7 @@ export default function App() {
             <main className="flex-1">
                 <Routes>
                     <Route path="/" element={<UploadPage />} />
+                    <Route path="/gallery" element={<GalleryPage />} />
                     <Route path="/sessions/:sessionId/review" element={<ReviewPage />} />
                     <Route path="/sessions/:sessionId/generate" element={<GeneratePage />} />
                     <Route path="/sessions/:sessionId/results" element={<ResultsPage />} />
