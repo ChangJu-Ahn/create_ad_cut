@@ -1,0 +1,228 @@
+name: pr-preview
+
+# Single end-to-end PR preview pipeline. One job, one SHA, one sticky comment.
+#
+# On open/sync/reopen:
+#   1. Build backend image -> push to ACR -> create ACA revision pr-<N>-<sha> at 0% traffic
+#   2. Build frontend with VITE_API_BASE_URL pointing at that revision -> deploy to SWA staging
+#   3. Run Playwright against the SWA URL
+#   4. Publish screenshots to gh-screenshots branch
+#   5. Post ONE sticky comment with both URLs + screenshots
+#
+# On close: deactivate the PR's revisions.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  AZURE_RG: ${{ vars.AZURE_RG }}
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  ACA_NAME: ${{ vars.ACA_NAME }}
+  IMAGE_NAME: create-ad-cut-backend
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+
+jobs:
+  preview:
+    if: github.event.action != 'closed' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build & deploy backend to ACA (pr-<N>-<sha>, 0% traffic)
+        id: backend
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REV="pr-${PR_NUMBER}-${SHORT_SHA}"
+          IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${REV}"
+
+          az acr login -n "$ACR_NAME"
+          docker build -t "$IMAGE" -f backend/Dockerfile backend
+          docker push "$IMAGE"
+
+          # Deactivate older pr-<N>-* so we don't accumulate.
+          NEW="${ACA_NAME}--${REV}"
+          az containerapp revision list -g "$AZURE_RG" -n "$ACA_NAME" \
+            --query "[?properties.active && contains(name, '--pr-${PR_NUMBER}-') && name != '${NEW}'].name" -o tsv \
+            | while read -r r; do
+                [ -z "$r" ] && continue
+                az containerapp revision deactivate -g "$AZURE_RG" -n "$ACA_NAME" --revision "$r" || true
+              done
+
+          az containerapp update -g "$AZURE_RG" -n "$ACA_NAME" \
+            --image "$IMAGE" --revision-suffix "$REV"
+
+          BASE_FQDN=$(az containerapp show -g "$AZURE_RG" -n "$ACA_NAME" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          DOMAIN="${BASE_FQDN#${ACA_NAME}.}"
+          BACKEND_URL="https://${ACA_NAME}--${REV}.${DOMAIN}"
+          echo "url=$BACKEND_URL" >> $GITHUB_OUTPUT
+          echo "rev=$REV" >> $GITHUB_OUTPUT
+
+          # Smoke test
+          for i in 1 2 3 4 5 6; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BACKEND_URL/healthz" || echo 000)
+            [ "$CODE" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::error::Backend /healthz never returned 200"
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend pointing at preview backend
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ steps.backend.outputs.url }}
+        run: |
+          npm ci || npm install
+          npm run build
+
+      - name: Deploy SWA staging
+        id: swa
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: "frontend/dist"
+          skip_app_build: true
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm ci || npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright against SWA staging
+        id: pw
+        working-directory: e2e
+        env:
+          FRONTEND_URL: ${{ steps.swa.outputs.static_web_app_url }}
+        run: |
+          # Give SWA a moment to finish propagating the new bundle.
+          sleep 30
+          npx playwright test --reporter=list
+
+      - name: Publish screenshots to gh-screenshots branch
+        if: always()
+        id: shots
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          DIR=e2e/screenshots
+          if [ ! -d "$DIR" ] || [ -z "$(ls -A $DIR 2>/dev/null)" ]; then
+            echo "raw_base=" >> $GITHUB_OUTPUT
+            echo "shotlist=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          mkdir -p /tmp/shots && cp $DIR/*.png /tmp/shots/
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin gh-screenshots >/dev/null 2>&1; then
+            git fetch origin gh-screenshots
+            git switch gh-screenshots
+          else
+            git switch --orphan gh-screenshots
+            git rm -rf . >/dev/null 2>&1 || true
+            echo "Playwright screenshots" > README.md
+          fi
+          DEST="pr-${PR_NUMBER}/${GITHUB_SHA}"
+          mkdir -p "$DEST"
+          cp /tmp/shots/*.png "$DEST/"
+          git add "$DEST" README.md 2>/dev/null || git add "$DEST"
+          git commit -m "screenshots: PR #${PR_NUMBER} @ ${GITHUB_SHA::7}" || true
+          git push origin gh-screenshots
+
+          echo "raw_base=https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/gh-screenshots/${DEST}" >> $GITHUB_OUTPUT
+          {
+            echo 'shotlist<<EOF'
+            ls /tmp/shots | sort
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Build comment body
+        if: always()
+        id: body
+        env:
+          FE: ${{ steps.swa.outputs.static_web_app_url }}
+          BE: ${{ steps.backend.outputs.url }}
+          REV: ${{ steps.backend.outputs.rev }}
+          PW: ${{ steps.pw.outcome }}
+          RAW_BASE: ${{ steps.shots.outputs.raw_base }}
+          SHOTS: ${{ steps.shots.outputs.shotlist }}
+        run: |
+          {
+            echo 'body<<COMMENT_EOF'
+            echo "## PR Preview"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Frontend (SWA staging) | $FE |"
+            echo "| Backend (ACA revision \`$REV\`) | $BE |"
+            echo "| Playwright | $PW |"
+            echo ""
+            if [ -n "$RAW_BASE" ] && [ -n "$SHOTS" ]; then
+              echo "### Screenshots"
+              echo ""
+              while IFS= read -r shot; do
+                [ -z "$shot" ] && continue
+                echo "**$shot**"
+                echo ""
+                echo "![${shot}](${RAW_BASE}/${shot})"
+                echo ""
+              done <<< "$SHOTS"
+            else
+              echo "_(no screenshots produced)_"
+            fi
+            echo 'COMMENT_EOF'
+          } >> $GITHUB_OUTPUT
+
+      - name: Post one sticky preview comment
+        if: always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-preview
+          message: ${{ steps.body.outputs.body }}
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Deactivate PR revisions + close SWA env
+        run: |
+          az containerapp revision list -g "$AZURE_RG" -n "$ACA_NAME" \
+            --query "[?properties.active && contains(name, '--pr-${PR_NUMBER}-')].name" -o tsv \
+            | while read -r r; do
+                [ -z "$r" ] && continue
+                az containerapp revision deactivate -g "$AZURE_RG" -n "$ACA_NAME" --revision "$r" || true
+              done
+      - name: Close SWA staging environment
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: close
+          app_location: "frontend/dist"
+          skip_app_build: true

@@ -39,15 +39,15 @@ flowchart LR
 
     subgraph gh["GitHub"]
         PR((Pull Request))
-        CI[ci-backend<br/>ci-frontend<br/>pytest + tsc]
-        PREVIEW[deploy-pr-preview<br/>ACR image build + SWA staging]
-        REVIEW{사람 리뷰<br/>+ SWA preview URL 검증}
+        CI[ci<br/>pytest + ruff + tsc + vite build]
+        PREVIEW[pr-preview<br/>ACA revision + SWA staging<br/>+ Playwright 스크린샷]
+        REVIEW{사람 리뷰<br/>+ preview URL 검증}
         MAIN[main 머지]
     end
 
     subgraph azure["☁️ Azure"]
-        ACA_PROD[ACA<br/>latest revision = prod]
-        ACA_PR[ACA<br/>pr-N revision]
+        ACA_PROD[ACA<br/>main-* revision = prod]
+        ACA_PR[ACA<br/>pr-N revision (0% traffic)]
         SWA_PROD[SWA prod]
         SWA_PR[SWA staging]
     end
@@ -61,8 +61,8 @@ flowchart LR
     CI --> REVIEW
     PREVIEW --> REVIEW
     REVIEW -->|merge| MAIN
-    MAIN -->|deploy-backend| ACA_PROD
-    MAIN -->|deploy-frontend| SWA_PROD
+    MAIN -->|deploy-prod| ACA_PROD
+    MAIN -->|deploy-prod| SWA_PROD
     H1 -.AAD.-> azure
 ```
 
@@ -111,11 +111,9 @@ GitHub Repo 의 **Settings → Code & automation → Copilot** 에서 *Coding ag
 
 | Workflow | 트리거 | 동작 | 결과물 |
 |---|---|---|---|
-| [`ci-backend`](.github/workflows/ci-backend.yml) | PR + main push (`backend/**`) | `pytest` + `ruff check` + Docker build | ✅ 머지 게이트 |
-| [`ci-frontend`](.github/workflows/ci-frontend.yml) | PR + main push (`frontend/**`) | `tsc` + `vite build` | ✅ 머지 게이트 |
-| [`deploy-pr-preview`](.github/workflows/deploy-pr-preview.yml) | PR open/sync (`backend/**`) | ACR image build & push (no ACA revision) | 🐳 PR 댓글에 image 태그 |
-| [`deploy-backend`](.github/workflows/deploy-backend.yml) | main push (`backend/**`) | ACR build → ACA revision (suffix `main-<sha>`) → 100% traffic | 🚀 prod 백엔드 |
-| [`deploy-frontend`](.github/workflows/deploy-frontend.yml) | main push + PR (`frontend/**`) | SWA 빌드/배포 (prod or per-PR staging) | 🚀 prod / staging SWA |
+| [`ci`](.github/workflows/ci.yml) | PR + main push | `pytest` + `ruff` + `tsc` + `vite build` | ✅ 머지 게이트 |
+| [`pr-preview`](.github/workflows/pr-preview.yml) | PR open/sync/close | 단일 job: ACA revision 배포(0% traffic) → SWA staging 배포 → Playwright 실행 → 스크린샷 + URL을 하나의 sticky comment 로 | 🧪 PR 댓글의 preview URL + 스크린샷 |
+| [`deploy-prod`](.github/workflows/deploy-prod.yml) | main push | ACA revision `main-<sha>` 100% traffic + SWA prod 배포 | 🚀 prod |
 
 모든 deploy 워크플로우는 **`concurrency` group** 으로 보호되어 동일 브랜치/PR 의 동시 배포 race 를 차단합니다.
 
@@ -153,7 +151,7 @@ GitHub Repo *Settings → Secrets and variables → Actions* 에서 설정합니
 - ✅ 1명 이상 PR 리뷰 필수
 - ✅ CODEOWNERS 리뷰 필수
 - ✅ 새 커밋 시 기존 승인 자동 dismiss
-- ✅ `ci-backend / test`, `ci-frontend / build` 그린 필수
+- ✅ `ci / backend`, `ci / frontend` 그린 필수
 - ✅ Linear history 강제, force push / 삭제 차단
 - ✅ 대화 resolve 필수
 

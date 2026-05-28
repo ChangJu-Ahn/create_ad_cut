@@ -62,9 +62,32 @@ def patch_externals(monkeypatch: pytest.MonkeyPatch, fake_state: dict[str, Any])
         fake_state["sessions"][doc["sessionId"]] = doc
         return doc
 
+    def _list_sessions(limit: int) -> list[dict[str, Any]]:
+        sessions = sorted(
+            fake_state["sessions"].values(),
+            key=lambda s: s["createdAt"],
+            reverse=True,
+        )
+        projected = []
+        for s in sessions[:limit]:
+            analysis = s.get("analysis") or {}
+            projected.append(
+                {
+                    "id": s["id"],
+                    "sessionId": s["sessionId"],
+                    "createdAt": s["createdAt"],
+                    "updatedAt": s["updatedAt"],
+                    "input": s.get("input"),
+                    "promptMd": analysis.get("promptMd"),
+                    "generations": s.get("generations") or [],
+                }
+            )
+        return projected
+
     monkeypatch.setattr(cosmos, "create_session", _create_session)
     monkeypatch.setattr(cosmos, "get_session", _get_session)
     monkeypatch.setattr(cosmos, "upsert_session", _upsert_session)
+    monkeypatch.setattr(cosmos, "list_sessions", _list_sessions)
     monkeypatch.setattr(cosmos, "now_iso", lambda: "2026-05-01T00:00:02+00:00")
 
     # ---- blob ----
