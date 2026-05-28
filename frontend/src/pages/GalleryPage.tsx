@@ -212,9 +212,9 @@ function GalleryCard({ summary, onOpen }: CardProps) {
 
                     {/* Generated thumbnails (4) */}
                     <div className="grid grid-cols-4 gap-1.5">
-                        {thumbs.map((t) => (
+                        {thumbs.map((t, idx) => (
                             <div
-                                key={t.id}
+                                key={t.id || `thumb-${idx}`}
                                 className="aspect-square rounded-md bg-slate-100 overflow-hidden"
                                 title={t.label}
                             >
