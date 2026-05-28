@@ -38,21 +38,29 @@ jobs:
         run: |
           # Poll PR comments for the two sticky markers posted by
           # deploy-pr-preview.yml and deploy-frontend.yml. Time out after 10 min.
+          #
+          # The sticky comments are updated in place every push, so on a new
+          # push we need to ignore the stale URLs (from the previous SHA)
+          # and wait until the comment body references the current HEAD_SHA.
+          # Both URLs are of the form `...--pr-<N>-<shortsha>.<env>` so we
+          # filter on the 7-char prefix.
+          SHORT_SHA="${HEAD_SHA::7}"
+          echo "Looking for marker matching SHA prefix: $SHORT_SHA"
           for i in $(seq 1 60); do
             COMMENTS=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[].body' || echo "")
-            FE=$(echo "$COMMENTS" | grep -oE 'frontend-preview-url:[^ ]+' | tail -1 | cut -d: -f2-)
-            BE=$(echo "$COMMENTS" | grep -oE 'backend-preview-url:[^ ]+' | tail -1 | cut -d: -f2-)
-            if [ -n "$FE" ]; then
+            FE=$(echo "$COMMENTS" | grep -oE 'frontend-preview-url:[^ ]+' | grep -F "$SHORT_SHA" | tail -1 | cut -d: -f2-)
+            BE=$(echo "$COMMENTS" | grep -oE 'backend-preview-url:[^ ]+' | grep -F "$SHORT_SHA" | tail -1 | cut -d: -f2-)
+            if [ -n "$FE" ] && [ -n "$BE" ]; then
               echo "frontend=$FE" >> $GITHUB_OUTPUT
-              echo "backend=${BE:-(none)}" >> $GITHUB_OUTPUT
+              echo "backend=$BE" >> $GITHUB_OUTPUT
               echo "Frontend URL: $FE"
-              echo "Backend URL:  ${BE:-(none — pr-preview did not run)}"
+              echo "Backend URL:  $BE"
               exit 0
             fi
-            echo "Attempt $i/60 — frontend marker not yet posted"
+            echo "Attempt $i/60 — fresh markers not yet posted (FE=${FE:-?}, BE=${BE:-?})"
             sleep 10
           done
-          echo "::error::Timed out waiting for frontend preview URL"
+          echo "::error::Timed out waiting for current-SHA preview URLs"
           exit 1
 
       - uses: actions/setup-node@v4
