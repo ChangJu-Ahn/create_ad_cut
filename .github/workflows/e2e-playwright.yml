@@ -22,11 +22,7 @@ concurrency:
 
 env:
   PR_NUMBER: ${{ github.event.pull_request.number }}
-  # Use the same SHA the deploy workflows use for their revision suffix.
-  # `pull_request.head.sha` is the head commit, but GITHUB_SHA on a
-  # pull_request event is the merge commit — and that is what
-  # deploy-pr-preview / deploy-frontend encode into the URL.
-  MERGE_SHA: ${{ github.sha }}
+  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
 jobs:
   e2e:
@@ -40,33 +36,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Poll PR comments for the two sticky markers posted by
-          # deploy-pr-preview.yml and deploy-frontend.yml. Time out after 10 min.
-          #
-          # Race avoidance: the BACKEND URL is `...--pr-<N>-<shortsha>.<env>`,
-          # so it changes every push and we MUST wait for the current SHA's
-          # value (older revisions are deactivated by the new deploy run).
-          # The FRONTEND URL is a stable per-PR SWA staging URL whose content
-          # is overwritten in place — there is no SHA in the URL itself, so
-          # we just wait for the marker to exist; bundle freshness is handled
-          # by the in-spec landing retry.
-          SHORT_SHA="${MERGE_SHA::7}"
-          echo "Looking for backend marker matching SHA prefix: $SHORT_SHA"
+          # Poll PR comments for the frontend preview marker posted by
+          # deploy-frontend.yml. The SWA staging URL is stable per-PR and
+          # its bundle is overwritten in place — propagation lag is handled
+          # by the in-spec landing retry. Backend URL is read alongside if
+          # present (for debugging only — the spec talks to the SWA URL).
           for i in $(seq 1 60); do
             COMMENTS=$(gh pr view "$PR_NUMBER" --json comments --jq '.comments[].body' || echo "")
             FE=$(echo "$COMMENTS" | grep -oE 'frontend-preview-url:[^ ]+' | tail -1 | cut -d: -f2-)
-            BE=$(echo "$COMMENTS" | grep -oE 'backend-preview-url:[^ ]+' | grep -F "$SHORT_SHA" | tail -1 | cut -d: -f2-)
-            if [ -n "$FE" ] && [ -n "$BE" ]; then
+            BE=$(echo "$COMMENTS" | grep -oE 'backend-preview-url:[^ ]+' | tail -1 | cut -d: -f2-)
+            if [ -n "$FE" ]; then
               echo "frontend=$FE" >> $GITHUB_OUTPUT
-              echo "backend=$BE" >> $GITHUB_OUTPUT
+              echo "backend=${BE:-(none)}" >> $GITHUB_OUTPUT
               echo "Frontend URL: $FE"
-              echo "Backend URL:  $BE"
+              echo "Backend URL:  ${BE:-(none)}"
               exit 0
             fi
-            echo "Attempt $i/60 — markers not yet ready (FE=${FE:-?}, BE=${BE:-?})"
+            echo "Attempt $i/60 — frontend marker not yet posted"
             sleep 10
           done
-          echo "::error::Timed out waiting for preview URLs (FE marker or current-SHA BE marker)"
+          echo "::error::Timed out waiting for frontend preview URL"
           exit 1
 
       - uses: actions/setup-node@v4
