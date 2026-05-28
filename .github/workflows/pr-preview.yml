@@ -90,6 +90,7 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_BASE_URL: ${{ steps.backend.outputs.url }}
+          VITE_APP_NAME: create-ad-cut_dev
         run: |
           npm ci || npm install
           npm run build

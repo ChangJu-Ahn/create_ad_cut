@@ -6,6 +6,8 @@ import ReviewPage from "./pages/ReviewPage";
 import UploadPage from "./pages/UploadPage";
 
 export default function App() {
+    const appName = import.meta.env.VITE_APP_NAME ?? "create-ad-cut";
+
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
             {/* Top bar */}
@@ -13,7 +15,7 @@ export default function App() {
                 <div className="max-w-screen-2xl mx-auto px-4 h-14 flex items-center justify-between">
                     <Link to="/" className="flex items-center gap-2 font-bold text-slate-900 tracking-tight">
                         <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-900 text-white text-xs">AI</span>
-                        create-ad-cut
+                        {appName}
                     </Link>
                     <Link
                         to="/gallery"
