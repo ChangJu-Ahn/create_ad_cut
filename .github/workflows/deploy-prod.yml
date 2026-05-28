@@ -1,0 +1,74 @@
+name: deploy-prod
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: true
+
+env:
+  AZURE_RG: ${{ vars.AZURE_RG }}
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  ACA_NAME: ${{ vars.ACA_NAME }}
+  IMAGE_NAME: create-ad-cut-backend
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Build, push, deploy 100% traffic
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          REV="main-${SHORT_SHA}"
+          NEW="${ACA_NAME}--${REV}"
+          IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${REV}"
+
+          az acr login -n "$ACR_NAME"
+          docker build -t "$IMAGE" -f backend/Dockerfile backend
+          docker push "$IMAGE"
+
+          az containerapp update -g "$AZURE_RG" -n "$ACA_NAME" \
+            --image "$IMAGE" --revision-suffix "$REV"
+          az containerapp ingress traffic set -g "$AZURE_RG" -n "$ACA_NAME" \
+            --revision-weight "${NEW}=100"
+
+          # Deactivate older main revisions (leave pr-* alone).
+          az containerapp revision list -g "$AZURE_RG" -n "$ACA_NAME" \
+            --query "[?properties.active && contains(name, '--main-') && name != '${NEW}'].name" -o tsv \
+            | while read -r r; do
+                [ -z "$r" ] && continue
+                az containerapp revision deactivate -g "$AZURE_RG" -n "$ACA_NAME" --revision "$r" || true
+              done
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build
+        working-directory: frontend
+        run: |
+          npm ci || npm install
+          npm run build
+      - name: Deploy SWA prod
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: "frontend/dist"
+          skip_app_build: true
