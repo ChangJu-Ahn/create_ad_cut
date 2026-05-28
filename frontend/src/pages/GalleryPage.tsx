@@ -118,8 +118,8 @@ export default function GalleryPage() {
 
 function GalleryCard({ item }: { item: GalleryItem }) {
     const thumbs = item.thumbnails.slice(0, 4);
-    // Always render a 2x2 grid; missing slots show a placeholder so layout
-    // stays consistent across cards.
+    // Render a single-row 4-up strip; missing slots show a placeholder so
+    // layout stays consistent across cards.
     const slots: (GalleryItem["thumbnails"][number] | null)[] = [
         ...thumbs,
         ...Array<null>(Math.max(0, 4 - thumbs.length)).fill(null),
@@ -175,7 +175,7 @@ function GalleryCard({ item }: { item: GalleryItem }) {
                 </div>
             </div>
 
-            {/* Thumbnails: 2x2 grid of generations */}
+            {/* Thumbnails: 4-up strip of generations */}
             <div className="px-4 pb-4">
                 <div className="grid grid-cols-4 gap-1.5">
                     {slots.map((g, i) =>
