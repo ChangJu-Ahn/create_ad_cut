@@ -15,7 +15,14 @@ export default function App() {
                         <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-900 text-white text-xs">AI</span>
                         create-ad-cut
                     </Link>
-                    <Link to="/board" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition">
+                    <Link
+                        to="/board"
+                        data-testid="nav-board"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition shadow-sm"
+                    >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+                        </svg>
                         익명 게시판
                     </Link>
                 </div>
