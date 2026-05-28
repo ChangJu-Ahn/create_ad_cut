@@ -41,7 +41,11 @@ def patch_externals(monkeypatch: pytest.MonkeyPatch, fake_state: dict[str, Any])
 
     # ---- cosmos ----
     def _create_session(session_id: str) -> dict[str, Any]:
-        now = "2026-05-01T00:00:00+00:00"
+        # Each session gets a strictly-increasing createdAt so ordering
+        # tests (e.g. gallery latest-first) are deterministic.
+        seq = fake_state.setdefault("session_seq", 0) + 1
+        fake_state["session_seq"] = seq
+        now = f"2026-05-01T00:00:{seq:02d}+00:00"
         doc = {
             "id": session_id,
             "sessionId": session_id,
@@ -66,6 +70,16 @@ def patch_externals(monkeypatch: pytest.MonkeyPatch, fake_state: dict[str, Any])
     monkeypatch.setattr(cosmos, "get_session", _get_session)
     monkeypatch.setattr(cosmos, "upsert_session", _upsert_session)
     monkeypatch.setattr(cosmos, "now_iso", lambda: "2026-05-01T00:00:02+00:00")
+
+    def _list_sessions(limit: int, offset: int) -> list[dict[str, Any]]:
+        all_docs = sorted(
+            fake_state["sessions"].values(),
+            key=lambda d: d.get("createdAt", ""),
+            reverse=True,
+        )
+        return all_docs[offset : offset + limit]
+
+    monkeypatch.setattr(cosmos, "list_sessions", _list_sessions)
 
     # ---- blob ----
     def _ensure_container() -> None:

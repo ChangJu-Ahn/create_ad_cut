@@ -98,6 +98,32 @@ export interface SessionView {
     jobs: GenerateJobOut[];
 }
 
+// ---- Gallery ---------------------------------------------------------------
+
+export interface GalleryThumbnail {
+    id: string;
+    mode: ShotMode;
+    label: string;
+    imageUrl: string;
+}
+
+export interface GallerySessionSummary {
+    sessionId: string;
+    createdAt: string;
+    updatedAt: string;
+    inputImageUrl: string | null;
+    promptSummary: string | null;
+    generationCount: number;
+    thumbnails: GalleryThumbnail[];
+}
+
+export interface GalleryListOut {
+    items: GallerySessionSummary[];
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
@@ -173,4 +199,15 @@ export function getSession(sessionId: string) {
 
 export function listStyleHeaders() {
     return request<StyleHeaderInfo[]>("/style-headers");
+}
+
+export function listGallery(params: { limit?: number; offset?: number } = {}) {
+    const limit = params.limit ?? 12;
+    const offset = params.offset ?? 0;
+    const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    return request<GalleryListOut>(`/gallery?${qs.toString()}`);
+}
+
+export function getGalleryDetail(sessionId: string) {
+    return request<SessionView>(`/gallery/${sessionId}`);
 }

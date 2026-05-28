@@ -143,3 +143,39 @@ class SessionView(BaseModel):
     promptMd: str | None = None
     generations: list[GenerationResult] = []
     jobs: list[GenerateJobOut] = []
+
+
+# ---- Gallery -------------------------------------------------------------
+
+
+class GalleryThumbnail(BaseModel):
+    """Compact view of a single generated image used in gallery cards."""
+
+    id: str
+    mode: ShotMode
+    label: str
+    imageUrl: str
+
+
+class GallerySessionSummary(BaseModel):
+    """One session's summary card on the gallery list page."""
+
+    sessionId: str
+    createdAt: datetime
+    updatedAt: datetime
+    inputImageUrl: str | None = None
+    promptSummary: str | None = Field(
+        None, description="Analysis prompt (full text); the UI truncates long values."
+    )
+    generationCount: int = 0
+    thumbnails: list[GalleryThumbnail] = Field(
+        default_factory=list,
+        description="Up to 4 most-recent generated images for this session.",
+    )
+
+
+class GalleryListOut(BaseModel):
+    items: list[GallerySessionSummary]
+    limit: int
+    offset: int
+    hasMore: bool

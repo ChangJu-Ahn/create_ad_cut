@@ -55,6 +55,29 @@ def get_session(session_id: str) -> dict[str, Any] | None:
         return None
 
 
+def list_sessions(limit: int, offset: int) -> list[dict[str, Any]]:
+    """Return session documents ordered by `createdAt` DESC (latest first).
+
+    Cross-partition by design — the gallery view spans every seller's
+    sessions. `limit` and `offset` are pushed down to the Cosmos query.
+    """
+    query = (
+        "SELECT * FROM c ORDER BY c.createdAt DESC "
+        "OFFSET @offset LIMIT @limit"
+    )
+    params = [
+        {"name": "@offset", "value": int(offset)},
+        {"name": "@limit", "value": int(limit)},
+    ]
+    return list(
+        container().query_items(
+            query=query,
+            parameters=params,
+            enable_cross_partition_query=True,
+        )
+    )
+
+
 def upsert_session(doc: dict[str, Any]) -> dict[str, Any]:
     doc["updatedAt"] = now_iso()
     return container().upsert_item(doc)
