@@ -143,22 +143,3 @@ class SessionView(BaseModel):
     promptMd: str | None = None
     generations: list[GenerationResult] = []
     jobs: list[GenerateJobOut] = []
-
-
-class SessionListItem(BaseModel):
-    """Read-only gallery item — one card on the history page.
-
-    All URLs are time-limited SAS URLs refreshed at read time. No write
-    fields are exposed; the gallery is purely a Cosmos query result.
-    """
-
-    sessionId: str
-    createdAt: datetime
-    updatedAt: datetime
-    inputImageUrl: str | None = None
-    promptMd: str | None = None
-    generations: list[GenerationResult] = []
-
-
-class SessionList(BaseModel):
-    items: list[SessionListItem]

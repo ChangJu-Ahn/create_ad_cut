@@ -10,11 +10,8 @@
  * exercise the PR's backend before merge.
  */
 
-// Absolute URL (with /api suffix) when overridden, otherwise relative `/api`.
-// The backend mounts every route under `/api`; SWA Linked Backend forwards
-// `/api/*` without stripping the prefix, so we always include it.
-const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "");
-const API_BASE = RAW_BASE ? `${RAW_BASE}/api` : "/api";
+// Absolute URL (with trailing path) when overridden, otherwise relative `/api`.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api";
 
 export type BuiltInMode = "lookbook" | "front" | "side" | "back";
 export type ShotMode = BuiltInMode | "custom";
@@ -101,19 +98,6 @@ export interface SessionView {
     jobs: GenerateJobOut[];
 }
 
-export interface SessionListItem {
-    sessionId: string;
-    createdAt: string;
-    updatedAt: string;
-    inputImageUrl: string | null;
-    promptMd: string | null;
-    generations: GenerationResult[];
-}
-
-export interface SessionList {
-    items: SessionListItem[];
-}
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
@@ -189,8 +173,4 @@ export function getSession(sessionId: string) {
 
 export function listStyleHeaders() {
     return request<StyleHeaderInfo[]>("/style-headers");
-}
-
-export function listSessions(limit = 50) {
-    return request<SessionList>(`/sessions?limit=${limit}`);
 }
