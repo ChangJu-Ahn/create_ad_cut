@@ -48,7 +48,27 @@ test("platform reachable + board scenario when present", async ({ page }) => {
 
     await page.screenshot({ path: join(SCREENSHOT_DIR, "01-landing.png"), fullPage: true });
 
-    // 2) Board scenario — only if the page is shipped with data-testid hooks.
+    // 2) Gallery scenario — only if the /gallery page is shipped.
+    //    Graceful skip so this spec keeps passing on branches that don't have it.
+    const galleryResp = await page.goto("/gallery", { waitUntil: "networkidle" });
+    if (galleryResp?.ok()) {
+        const galleryHeading = page.getByRole("heading", { level: 1, name: "생성 이력" });
+        if (await galleryHeading.isVisible().catch(() => false)) {
+            await page.screenshot({ path: join(SCREENSHOT_DIR, "06-gallery.png"), fullPage: true });
+        } else {
+            test.info().annotations.push({
+                type: "skip-reason",
+                description: "/gallery returned 200 but heading not found — skipping gallery capture",
+            });
+        }
+    } else {
+        test.info().annotations.push({
+            type: "skip-reason",
+            description: `/gallery returned ${galleryResp?.status()} — skipping gallery capture`,
+        });
+    }
+
+    // 3) Board scenario — only if the page is shipped with data-testid hooks.
     const boardResp = await page.goto("/board", { waitUntil: "networkidle" });
     if (!boardResp?.ok()) {
         test.info().annotations.push({

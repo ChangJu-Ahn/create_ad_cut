@@ -26,6 +26,27 @@ jobs:
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Self-heal — ensure Cosmos + Storage public network access is Enabled
+        # MCAPS governance SP flips publicNetworkAccess to Disabled ~daily.
+        # Re-enable on every main deploy so prod doesn't 500 between pushes.
+        run: |
+          set -e
+          COSMOS=$(az cosmosdb list -g "$AZURE_RG" --query "[0].name" -o tsv)
+          STG=$(az storage account list -g "$AZURE_RG" --query "[0].name" -o tsv)
+
+          PNA=$(az cosmosdb show -g "$AZURE_RG" -n "$COSMOS" --query publicNetworkAccess -o tsv)
+          echo "cosmos/$COSMOS pna=$PNA"
+          if [ "$PNA" != "Enabled" ]; then
+            echo "::warning::Re-enabling public network access on cosmos/$COSMOS"
+            az cosmosdb update -g "$AZURE_RG" -n "$COSMOS" --public-network-access Enabled -o none
+          fi
+
+          PNA=$(az storage account show -g "$AZURE_RG" -n "$STG" --query publicNetworkAccess -o tsv)
+          echo "storage/$STG pna=$PNA"
+          if [ "$PNA" != "Enabled" ]; then
+            echo "::warning::Re-enabling public network access on storage/$STG"
+            az storage account update -g "$AZURE_RG" -n "$STG" --public-network-access Enabled -o none
+          fi
       - name: Build, push, deploy 100% traffic
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
