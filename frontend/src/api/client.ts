@@ -178,6 +178,40 @@ export function getSession(sessionId: string) {
     return request<SessionView>(`/sessions/${sessionId}`);
 }
 
+export interface GalleryThumbnail {
+    id: string;
+    mode: ShotMode;
+    label: string;
+    imageUrl: string;
+}
+
+export interface GallerySessionSummary {
+    sessionId: string;
+    createdAt: string;
+    updatedAt: string;
+    inputImageUrl: string | null;
+    promptSummary: string | null;
+    generationCount: number;
+    thumbnails: GalleryThumbnail[];
+}
+
+export interface GalleryPageMeta {
+    page: number;
+    pageSize: number;
+    total: number;
+    hasMore: boolean;
+}
+
+export interface GalleryListOut {
+    items: GallerySessionSummary[];
+    page: GalleryPageMeta;
+}
+
+export function listGallery(page = 1, pageSize = 12) {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    return request<GalleryListOut>(`/gallery?${params.toString()}`);
+}
+
 export function listStyleHeaders() {
     return request<StyleHeaderInfo[]>("/style-headers");
 }

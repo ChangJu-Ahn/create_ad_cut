@@ -231,6 +231,50 @@ curl $BASE/api/sessions/$SID -H "X-API-Key: $API_KEY"
 
 ---
 
+## 5-1. GET `/api/gallery`
+
+생성 이력 Gallery 화면용 세션 카드 목록을 최신순(`createdAt` desc)으로 반환합니다.
+누락된 `input` / `analysis` / `generations` 는 안전하게 빈 값으로 노출되어 500 이 나지 않습니다.
+
+쿼리 파라미터:
+- `page` (선택, 기본 1, 최소 1): 1-based 페이지 번호
+- `pageSize` (선택, 기본 12, 최대 50): 페이지당 카드 수
+
+```bash
+curl "$BASE/api/gallery?page=1&pageSize=12" -H "X-API-Key: $API_KEY"
+```
+
+**200**
+
+```json
+{
+  "items": [
+    {
+      "sessionId": "f3a1c8d2...",
+      "createdAt": "2026-05-02T00:00:00+00:00",
+      "updatedAt": "2026-05-02T00:00:05+00:00",
+      "inputImageUrl": "https://...?sig=...",
+      "promptSummary": "분석 결과 본문 요약...",
+      "generationCount": 5,
+      "thumbnails": [
+        {
+          "id": "9a4b...",
+          "mode": "lookbook",
+          "label": "룩북 착용컷",
+          "imageUrl": "https://...?sig=..."
+        }
+      ]
+    }
+  ],
+  "page": { "page": 1, "pageSize": 12, "total": 23, "hasMore": true }
+}
+```
+
+- 카드별 `thumbnails` 는 최신순 최대 4개로 잘립니다.
+- 상세 진입은 기존 [`GET /api/sessions/{id}`](#5-get-apisessionsid) 를 그대로 사용합니다.
+
+---
+
 ## 6. Health endpoints
 
 - `GET /api/healthz` — application healthz (외부 호출 + SWA proxy)

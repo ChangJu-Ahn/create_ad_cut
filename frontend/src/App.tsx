@@ -1,4 +1,5 @@
 import { Link, Route, Routes } from "react-router-dom";
+import GalleryPage from "./pages/GalleryPage";
 import GeneratePage from "./pages/GeneratePage";
 import ResultsPage from "./pages/ResultsPage";
 import ReviewPage from "./pages/ReviewPage";
@@ -18,6 +19,16 @@ export default function App() {
                     </Link>
                     <nav className="flex items-center gap-2">
                         <Link
+                            to="/gallery"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 transition"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 16.5l4.5-4.5 4.5 4.5 3-3 4.5 4.5" />
+                            </svg>
+                            생성 이력
+                        </Link>
+                        <Link
                             to="/"
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 transition"
                         >
@@ -34,6 +45,7 @@ export default function App() {
             <main className="flex-1">
                 <Routes>
                     <Route path="/" element={<UploadPage />} />
+                    <Route path="/gallery" element={<GalleryPage />} />
                     <Route path="/sessions/:sessionId/review" element={<ReviewPage />} />
                     <Route path="/sessions/:sessionId/generate" element={<GeneratePage />} />
                     <Route path="/sessions/:sessionId/results" element={<ResultsPage />} />
