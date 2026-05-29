@@ -15,10 +15,17 @@ test("platform reachable + board scenario when present", async ({ page }) => {
     // Surface SPA console errors so a blank white screen fails the test
     // instead of passing on a 200 HTML response.
     const consoleErrors: string[] = [];
+    const backendApiRequests: string[] = [];
     page.on("console", (msg) => {
         if (msg.type() === "error") consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+    page.on("request", (req) => {
+        const url = req.url();
+        if (url.includes("azurecontainerapps.io")) {
+            backendApiRequests.push(url);
+        }
+    });
 
     // 1) Landing page — must render the app shell, not just return 200.
     const resp = await page.goto("/", { waitUntil: "networkidle" });
@@ -31,7 +38,19 @@ test("platform reachable + board scenario when present", async ({ page }) => {
         `app shell did not render. console errors: ${consoleErrors.join(" | ") || "(none)"}`
     ).toBeVisible({ timeout: 10_000 });
 
+    // Regression guard: preview frontend must call backend with /api prefix.
+    expect
+        .soft(
+            backendApiRequests.every((url) => url.includes("/api/")),
+            `backend calls missing /api prefix: ${backendApiRequests.join(" | ") || "(none)"}`
+        )
+        .toBeTruthy();
+
     await page.screenshot({ path: join(SCREENSHOT_DIR, "01-landing.png"), fullPage: true });
+
+    // Regression guard: gallery route should not show the "요청 실패 (404)" banner.
+    await page.goto("/gallery", { waitUntil: "networkidle" });
+    await expect(page.getByText("요청 실패 (404)")).toHaveCount(0);
 
     // 2) Board scenario — only if the page is shipped with data-testid hooks.
     const boardResp = await page.goto("/board", { waitUntil: "networkidle" });
