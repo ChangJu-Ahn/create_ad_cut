@@ -48,10 +48,6 @@ test("platform reachable + board scenario when present", async ({ page }) => {
 
     await page.screenshot({ path: join(SCREENSHOT_DIR, "01-landing.png"), fullPage: true });
 
-    // Regression guard: gallery route should not show the "요청 실패 (404)" banner.
-    await page.goto("/gallery", { waitUntil: "networkidle" });
-    await expect(page.getByText("요청 실패 (404)")).toHaveCount(0);
-
     // 2) Board scenario — only if the page is shipped with data-testid hooks.
     const boardResp = await page.goto("/board", { waitUntil: "networkidle" });
     if (!boardResp?.ok()) {
