@@ -1,5 +1,4 @@
 import { Link, Route, Routes } from "react-router-dom";
-import GalleryPage from "./pages/GalleryPage";
 import GeneratePage from "./pages/GeneratePage";
 import ResultsPage from "./pages/ResultsPage";
 import ReviewPage from "./pages/ReviewPage";
@@ -19,15 +18,6 @@ export default function App() {
                     </Link>
                     <nav className="flex items-center gap-2">
                         <Link
-                            to="/gallery"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 transition"
-                        >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18M3 12h18M3 17h18" />
-                            </svg>
-                            생성 이력
-                        </Link>
-                        <Link
                             to="/"
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 transition"
                         >
@@ -44,7 +34,6 @@ export default function App() {
             <main className="flex-1">
                 <Routes>
                     <Route path="/" element={<UploadPage />} />
-                    <Route path="/gallery" element={<GalleryPage />} />
                     <Route path="/sessions/:sessionId/review" element={<ReviewPage />} />
                     <Route path="/sessions/:sessionId/generate" element={<GeneratePage />} />
                     <Route path="/sessions/:sessionId/results" element={<ResultsPage />} />
