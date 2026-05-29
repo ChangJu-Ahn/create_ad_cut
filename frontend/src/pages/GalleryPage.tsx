@@ -126,6 +126,7 @@ export default function GalleryPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [page, setPage] = useState(1);
+    const [retryNonce, setRetryNonce] = useState(0);
 
     useEffect(() => {
         let cancelled = false;
@@ -152,7 +153,7 @@ export default function GalleryPage() {
         return () => {
             cancelled = true;
         };
-    }, [page]);
+    }, [page, retryNonce]);
 
     const items = data?.items ?? [];
     const meta = data?.page;
@@ -194,7 +195,7 @@ export default function GalleryPage() {
                     <span>이력을 불러오지 못했습니다. {error}</span>
                     <button
                         type="button"
-                        onClick={() => setPage((p) => p)}
+                        onClick={() => setRetryNonce((n) => n + 1)}
                         className="shrink-0 px-3 py-1 rounded-lg bg-white border border-red-200 text-red-700 text-xs font-medium hover:bg-red-50"
                     >
                         다시 시도
