@@ -10,6 +10,7 @@
         }
     ],
     "responseOverrides": {
-        "401": { "rewrite": "/index.html", "statusCode": 200 }
+        "401": { "rewrite": "/index.html", "statusCode": 200 },
+        "404": { "rewrite": "/index.html", "statusCode": 200 }
     }
 }
