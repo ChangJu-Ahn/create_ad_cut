@@ -10,8 +10,15 @@
  * exercise the PR's backend before merge.
  */
 
-// Absolute URL (with trailing path) when overridden, otherwise relative `/api`.
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api";
+// Absolute URL override for previews; if a bare backend origin is provided,
+// append `/api` so route paths stay consistent.
+const rawApiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+const normalizedApiBase = rawApiBase ? rawApiBase.replace(/\/+$/, "") : "";
+const API_BASE = normalizedApiBase
+    ? normalizedApiBase.endsWith("/api")
+        ? normalizedApiBase
+        : `${normalizedApiBase}/api`
+    : "/api";
 
 export type BuiltInMode = "lookbook" | "front" | "side" | "back";
 export type ShotMode = BuiltInMode | "custom";
@@ -169,6 +176,42 @@ export function getGenerateJob(sessionId: string, jobId: string) {
 
 export function getSession(sessionId: string) {
     return request<SessionView>(`/sessions/${sessionId}`);
+}
+
+// ---- Gallery ---------------------------------------------------------------
+
+export interface GalleryThumbnail {
+    id: string;
+    mode: ShotMode;
+    label: string;
+    imageUrl: string;
+}
+
+export interface GalleryCard {
+    sessionId: string;
+    createdAt: string;
+    updatedAt: string;
+    inputImageUrl: string | null;
+    promptSummary: string;
+    promptMd: string | null;
+    thumbnails: GalleryThumbnail[];
+    generationCount: number;
+}
+
+export interface GalleryList {
+    items: GalleryCard[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export function listGallery(limit = 20, offset = 0) {
+    const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    return request<GalleryList>(`/gallery?${qs.toString()}`);
+}
+
+export function getGalleryItem(sessionId: string) {
+    return request<SessionView>(`/gallery/${sessionId}`);
 }
 
 export function listStyleHeaders() {

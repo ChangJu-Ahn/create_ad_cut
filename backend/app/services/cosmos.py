@@ -55,6 +55,40 @@ def get_session(session_id: str) -> dict[str, Any] | None:
         return None
 
 
+def list_sessions(limit: int = 20, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
+    """Return sessions ordered by `createdAt` desc, plus the total count.
+
+    A two-pass approach (count + page) keeps RU usage predictable and matches
+    Cosmos OFFSET/LIMIT semantics. Cross-partition is required because the
+    partition key is `/sessionId`.
+    """
+    c = container()
+    total = next(
+        iter(
+            c.query_items(
+                query="SELECT VALUE COUNT(1) FROM c",
+                enable_cross_partition_query=True,
+            )
+        ),
+        0,
+    )
+    items = list(
+        c.query_items(
+            query=(
+                "SELECT * FROM c "
+                "ORDER BY c.createdAt DESC "
+                "OFFSET @offset LIMIT @limit"
+            ),
+            parameters=[
+                {"name": "@offset", "value": max(offset, 0)},
+                {"name": "@limit", "value": max(limit, 0)},
+            ],
+            enable_cross_partition_query=True,
+        )
+    )
+    return items, int(total)
+
+
 def upsert_session(doc: dict[str, Any]) -> dict[str, Any]:
     doc["updatedAt"] = now_iso()
     return container().upsert_item(doc)
