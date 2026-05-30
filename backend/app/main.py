@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routes import analyze, generate, prompt, sessions, style_headers
+from app.routes import analyze, gallery, generate, prompt, sessions, style_headers
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level.upper())
@@ -40,6 +40,7 @@ app.include_router(analyze.router, prefix="/api")
 app.include_router(prompt.router, prefix="/api")
 app.include_router(generate.router, prefix="/api")
 app.include_router(style_headers.router, prefix="/api")
+app.include_router(gallery.router, prefix="/api")
 
 
 @app.get("/api/healthz", tags=["meta"])
