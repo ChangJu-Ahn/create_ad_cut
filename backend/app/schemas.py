@@ -143,3 +143,39 @@ class SessionView(BaseModel):
     promptMd: str | None = None
     generations: list[GenerationResult] = []
     jobs: list[GenerateJobOut] = []
+
+
+# ---- Gallery -------------------------------------------------------------
+
+
+class GalleryThumb(BaseModel):
+    """Lightweight generation reference used on a gallery card."""
+
+    id: str
+    mode: str = ""
+    label: str = ""
+    imageUrl: str
+
+
+class GalleryCard(BaseModel):
+    """One session, projected for the gallery grid.
+
+    `promptSummary` is a single-line, length-capped summary of the analysis
+    prompt suitable for ellipsis rendering on the client. `thumbnails` is
+    capped at 4 newest generations so the payload stays small.
+    """
+
+    sessionId: str
+    createdAt: datetime
+    updatedAt: datetime
+    inputImageUrl: str | None = None
+    promptSummary: str = ""
+    generationCount: int = 0
+    thumbnails: list[GalleryThumb] = []
+
+
+class GalleryList(BaseModel):
+    items: list[GalleryCard]
+    total: int
+    limit: int
+    offset: int
