@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { analyze, ApiError, createSession } from "../api/client";
 import StepIndicator from "../components/StepIndicator";
 
@@ -58,11 +58,22 @@ export default function UploadPage() {
             <form onSubmit={onSubmit} className="space-y-6">
                 {/* Card */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
-                    <div>
-                        <h1 className="text-xl font-bold text-slate-900">상품 사진 업로드</h1>
-                        <p className="text-sm text-slate-500 mt-1">
-                            PNG / JPEG / WEBP, 최대 10 MB. 업로드하면 GPT-5.x 가 상품을 분석합니다.
-                        </p>
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <h1 className="text-xl font-bold text-slate-900">상품 사진 업로드</h1>
+                            <p className="text-sm text-slate-500 mt-1">
+                                PNG / JPEG / WEBP, 최대 10 MB. 업로드하면 GPT-5.x 가 상품을 분석합니다.
+                            </p>
+                        </div>
+                        <Link
+                            to="/gallery"
+                            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-900 hover:text-white transition"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
+                            </svg>
+                            생성 이력 보기
+                        </Link>
                     </div>
 
                     {/* Drop zone */}
